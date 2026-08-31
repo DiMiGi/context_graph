@@ -1,0 +1,11 @@
+{
+  "antigravity.allowedCommands": [
+    "^docker logs.*",
+    "^docker ps.*",
+    "^git status.*",
+    "^git diff.*",
+    "^docker restart.*",
+    "^docker exec.*",
+    "^cat.*"
+  ]
+}

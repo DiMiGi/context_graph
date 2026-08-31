@@ -1,0 +1,53 @@
+<div class="canvas-view-layout">
+  <!-- Herramientas flotantes de Canvas -->
+  <div class="graph-overlay-tools">
+    <button id="btn-fit" title="Centrar Vista">🎯 Centrar</button>
+    <button id="btn-pause-sim" title="Pausar / Reanudar Física">⏸️ Pausar</button>
+  </div>
+
+  <!-- Contenedor del ForceGraph -->
+  <div id="graph-canvas-element"></div>
+
+  <!-- Inspector / Editor lateral flotante de nodos -->
+  <aside id="inspector-drawer" class="inspector-drawer hidden">
+    <div class="inspector-header">
+      <span>Editor de Nodo</span>
+      <button id="btn-close-inspector">✕</button>
+    </div>
+    <div class="inspector-body">
+      <div class="form-group">
+        <label>ID del Nodo</label>
+        <input type="text" id="node-id" disabled>
+      </div>
+      <div class="form-group">
+        <label>Etiqueta</label>
+        <input type="text" id="node-label">
+      </div>
+      <div class="form-group">
+        <label>Tipo de Nodo</label>
+        <select id="node-type">
+          <option value="Schema">Schema (Base de Datos)</option>
+          <option value="Class">Class</option>
+          <option value="Function">Function</option>
+          <option value="Module">Module</option>
+          <option value="Concept">Concept</option>
+          <option value="Document">Document</option>
+          <option value="Config">Config</option>
+          <option value="Asset">Asset</option>
+        </select>
+      </div>
+      <div class="form-group">
+        <label>Ruta de Archivo</label>
+        <input type="text" id="node-path">
+      </div>
+      <div class="form-group">
+        <label>Notas / Contexto Arquitectónico</label>
+        <textarea id="node-desc" rows="5"></textarea>
+      </div>
+      <div class="inspector-actions">
+        <button id="btn-save-node" class="primary">Guardar</button>
+        <button id="btn-delete-node" class="danger">Eliminar</button>
+      </div>
+    </div>
+  </aside>
+</div>

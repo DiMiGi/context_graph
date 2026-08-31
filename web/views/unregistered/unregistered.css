@@ -1,0 +1,25 @@
+.unregistered-view-container {
+  padding: 32px;
+  max-width: 900px;
+  margin: 0 auto;
+}
+
+.unregistered-header-title {
+  font-size: 20px;
+  font-weight: 700;
+  color: var(--text-main);
+  margin-bottom: 8px;
+}
+
+.unregistered-desc {
+  font-size: 13px;
+  color: var(--text-muted);
+  margin-bottom: 24px;
+}
+
+.unregistered-table-card {
+  background: var(--bg-surface);
+  border: 1px solid var(--border-color);
+  border-radius: 8px;
+  padding: 20px;
+}

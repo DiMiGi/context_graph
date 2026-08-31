@@ -1,0 +1,50 @@
+.tasks-view-container {
+  padding: 32px;
+  max-width: 1000px;
+  margin: 0 auto;
+}
+
+.tasks-header-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 24px;
+}
+
+.tasks-title {
+  font-size: 20px;
+  font-weight: 700;
+  color: var(--text-main);
+}
+
+.tasks-subtitle {
+  font-size: 13px;
+  color: var(--text-muted);
+  margin-top: 4px;
+}
+
+.tasks-table-card {
+  background: var(--bg-surface);
+  border: 1px solid var(--border-color);
+  border-radius: 8px;
+  padding: 20px;
+}
+
+.task-status-pill {
+  display: inline-block;
+  padding: 3px 8px;
+  border-radius: 12px;
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+}
+
+.task-status-pill.queued { background: rgba(245, 158, 11, 0.15); color: var(--accent-warning); }
+.task-status-pill.running { background: rgba(0, 229, 255, 0.15); color: var(--accent-primary); animation: pulse 1.5s infinite; }
+.task-status-pill.completed { background: rgba(16, 185, 129, 0.15); color: var(--accent-success); }
+.task-status-pill.failed { background: rgba(239, 68, 68, 0.15); color: var(--accent-danger); }
+
+@keyframes pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.5; }
+}

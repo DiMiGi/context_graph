@@ -1,11 +1,17 @@
 import json
-from typing import Dict, Any, List
+from typing import Dict, Any, List, Optional
 from mcp.server.fastmcp import FastMCP
 from app.graph.storage import GraphStorage
 from app.graph.model import Node, Edge
 from app.ingestion.engine import IngestionEngine
+from app.config import get_configured_projects
+import os
 
+# FastMCP Server
 mcp = FastMCP("local_graphs")
+
+# Exponer el manejador SSE directamente en /sse y /messages
+mcp_sse_app = mcp.sse_app()
 
 @mcp.tool()
 def list_projects() -> str:
@@ -55,7 +61,7 @@ def get_node_connections(project_id: str, node_id: str) -> str:
 
 @mcp.tool()
 def update_node_context(project_id: str, node_id: str, description: str) -> str:
-    """Allows AI agents to update notes or architectural context on a specific node."""
+    """Allows AI agents to enrich notes or architectural context on a specific node without breaking scanner data."""
     graph = GraphStorage.load_graph(project_id)
     if not graph:
         return f"Project '{project_id}' not found."
@@ -65,19 +71,60 @@ def update_node_context(project_id: str, node_id: str, description: str) -> str:
         return f"Node '{node_id}' not found in project '{project_id}'."
 
     target.description = description
+    target.is_custom = True
+    target.origin = "ai"
     GraphStorage.save_graph(graph)
-    return f"Successfully updated node '{node_id}' in project '{project_id}'."
+    return f"Successfully updated node '{node_id}' (marked as AI-enriched) in project '{project_id}'."
 
 @mcp.tool()
-def index_source_directory(project_id: str, source_directory: str, project_name: str = "") -> str:
-    """Triggers recursive indexing of a codebase or documentation directory into a project's knowledge graph."""
+def add_custom_connection(project_id: str, source: str, target: str, relation: str = "relates_to") -> str:
+    """Allows AI agents to create new architectural relationships between nodes that persist across re-indexing."""
+    graph = GraphStorage.load_graph(project_id)
+    if not graph:
+        return f"Project '{project_id}' not found."
+
+    node_ids = {n.id for n in graph.nodes}
+    if source not in node_ids or target not in node_ids:
+        return f"Error: Source '{source}' or Target '{target}' does not exist in graph."
+
+    for e in graph.edges:
+        if e.source == source and e.target == target and e.relation == relation:
+            return "Connection already exists."
+
+    edge = Edge(source=source, target=target, relation=relation, origin="ai", is_custom=True)
+    graph.edges.append(edge)
+    GraphStorage.save_graph(graph)
+    return f"Successfully created persistent connection: {source} -[{relation}]-> {target}"
+
+@mcp.tool()
+def reindex_modified_files(project_id: str, file_paths: List[str]) -> str:
+    """Allows AI agents to partially re-index only the files they just modified or created, leaving all other graph connections and notes intact."""
+    configured = get_configured_projects()
+    target_config = next((cp for cp in configured if cp.get("id") == project_id), None)
+
+    source_path = None
+    if target_config:
+        source_path = target_config.get("container_path")
+    if not source_path or not os.path.exists(source_path):
+        source_path = f"/host_proyectos/{project_id}"
+
+    if not os.path.exists(source_path):
+        return f"Error: Project path for '{project_id}' not found."
+
     try:
-        graph = IngestionEngine.index_directory(project_id, source_directory, project_name)
+        graph = IngestionEngine.index_directory(
+            project_id=project_id,
+            source_directory=source_path,
+            mode="partial",
+            target_paths=file_paths
+        )
         return json.dumps({
             "status": "success",
-            "project_id": graph.project_id,
+            "project_id": project_id,
+            "mode": "partial",
+            "files_reindexed": file_paths,
             "total_nodes": len(graph.nodes),
             "total_edges": len(graph.edges)
         }, indent=2)
     except Exception as e:
-        return f"Error indexing directory: {str(e)}"
+        return f"Error during partial reindex: {str(e)}"

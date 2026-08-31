@@ -1,0 +1,57 @@
+<div class="summary-view-container">
+  <div class="summary-header-title">Métricas y Filtros del Proyecto</div>
+
+  <div class="summary-grid">
+    <!-- Tarjeta Nodos -->
+    <div class="summary-card">
+      <div class="summary-card-label">Total Nodos</div>
+      <div id="summary-stat-nodes" class="summary-card-value">0</div>
+      <div class="summary-card-sub">Clases, Módulos, Schemas y Docs</div>
+    </div>
+
+    <!-- Tarjeta Conexiones -->
+    <div class="summary-card">
+      <div class="summary-card-label">Total Conexiones</div>
+      <div id="summary-stat-edges" class="summary-card-value">0</div>
+      <div class="summary-card-sub">Imports, defines, inherits y traits</div>
+    </div>
+
+    <!-- Tarjeta Archivos -->
+    <div class="summary-card">
+      <div class="summary-card-label">Archivos Indexados</div>
+      <div id="summary-stat-files" class="summary-card-value">0</div>
+      <div id="summary-stat-types" class="summary-card-sub">Sin datos</div>
+    </div>
+  </div>
+
+  <!-- Filtros Rápidos y Buscador en el Resumen -->
+  <div class="summary-section">
+    <div class="section-title">Filtrado Rápido del Grafo</div>
+    <div class="summary-controls-row">
+      <div class="form-group flex-1">
+        <label>Filtrar por Tipo de Nodo</label>
+        <select id="summary-filter-type">
+          <option value="ALL">Todos los tipos</option>
+          <option value="Schema">🗄️ Schema (Tablas DB / Prisma)</option>
+          <option value="Class">📦 Class / Trait / Model</option>
+          <option value="Function">⚡ Function / Method</option>
+          <option value="Module">📄 Module / Archivo</option>
+          <option value="Concept">💡 Concept / Arquitectura</option>
+          <option value="Document">📑 Document (Markdown/Text)</option>
+          <option value="Config">⚙️ Config (JSON/YAML)</option>
+        </select>
+      </div>
+
+      <div class="form-group flex-2">
+        <label>Buscar nodo o archivo</label>
+        <input type="text" id="summary-search-nodes" placeholder="Ej: PaymentProcessor, AuthEngine, gateway.py...">
+      </div>
+    </div>
+  </div>
+
+  <!-- Desglose por Tipos de Archivos -->
+  <div class="summary-section">
+    <div class="section-title">Distribución de Código</div>
+    <div id="summary-breakdown-list" class="breakdown-grid"></div>
+  </div>
+</div>

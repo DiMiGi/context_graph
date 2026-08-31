@@ -4,14 +4,23 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>local_graphs | Gestor de Grafos de Conocimiento</title>
+  
+  <!-- Estilos Globales y Componentes Modulares -->
   <link rel="stylesheet" href="/css/style.css">
-  <!-- Cytoscape & Extensions -->
-  <script src="https://cdnjs.cloudflare.com/ajax/libs/cytoscape/3.28.1/cytoscape.min.js"></script>
+  <link rel="stylesheet" href="/views/canvas/canvas.css">
+  <link rel="stylesheet" href="/views/summary/summary.css">
+  <link rel="stylesheet" href="/views/report/report.css">
+  <link rel="stylesheet" href="/views/unregistered/unregistered.css">
+  <link rel="stylesheet" href="/views/tasks/tasks.css">
+  
+  <!-- Dependencias externas (Scripts síncronos) -->
+  <script src="https://cdn.jsdelivr.net/npm/d3@7"></script>
+  <script src="https://unpkg.com/force-graph"></script>
   <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
 </head>
 <body>
 
-  <!-- Header Bar -->
+  <!-- Barra Superior Unificada con Selector de Proyecto, Vistas y Acciones -->
   <header>
     <div class="brand">
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
@@ -24,152 +33,184 @@
       <span>LOCAL_GRAPHS</span>
     </div>
 
+    <!-- Navegación por Pestañas en la Barra Superior -->
+    <nav class="top-nav-tabs">
+      <button class="nav-tab active" data-view="view-canvas">🌐 Grafo 2D</button>
+      <button class="nav-tab" data-view="view-summary">📊 Resumen</button>
+      <button class="nav-tab" data-view="view-report">📑 Reporte</button>
+      <button class="nav-tab" data-view="view-unregistered">📁 No Registrados</button>
+      <button class="nav-tab" data-view="view-tasks">⚡ Tareas <span id="task-badge" class="badge hidden">0</span></button>
+    </nav>
+
+    <!-- Controles de Proyecto y Acciones Asíncronas -->
     <div class="project-controls">
       <select id="project-select">
         <option value="">Seleccionar Proyecto...</option>
       </select>
-      <button id="btn-new-project">+ Nuevo</button>
-      <button id="btn-ingest-dir" class="primary">📥 Indexar Carpeta</button>
+      <button id="btn-reindex-inc" class="primary" title="Encolar tarea de indexación incremental">➕ Indexar Nuevos</button>
+      <button id="btn-reindex-partial" title="Encolar tarea para rutas específicas">🎯 Reindexar Rutas</button>
+      <button id="btn-rebuild-full" class="danger" title="Encolar purga y reconstrucción total">⚠️ Reconstruir Todo</button>
     </div>
   </header>
 
-  <!-- Main Workspace -->
-  <div class="app-container">
+  <!-- Contenedor Principal de Vistas Modulares con HTML Embebido para Inicialización Instantánea -->
+  <main class="app-main-viewport">
     
-    <!-- Left Sidebar / Stats & Filters -->
-    <aside class="sidebar">
-      <div class="nav-tabs">
-        <button class="tab-btn active" data-tab="tab-stats">Resumen</button>
-        <button class="tab-btn" data-tab="tab-report">Reporte</button>
-      </div>
-
-      <div id="tab-stats" class="tab-content">
-        <div class="sidebar-header">Métricas del Proyecto</div>
-        <div class="stat-card">
-          <div class="label">Total Nodos</div>
-          <div id="stat-nodes" class="value">0</div>
+    <!-- 1. Componente Canvas -->
+    <div id="view-canvas" class="view-module active">
+      <div id="canvas-container-root">
+        <div class="canvas-view-layout">
+          <div class="graph-overlay-tools">
+            <button id="btn-fit" title="Centrar Vista">🎯 Centrar</button>
+            <button id="btn-pause-sim" title="Pausar / Reanudar Física">⏸️ Pausar</button>
+          </div>
+          <div id="graph-canvas-element"></div>
+          <aside id="inspector-drawer" class="inspector-drawer hidden">
+            <div class="inspector-header">
+              <span>Editor de Nodo</span>
+              <button id="btn-close-inspector">✕</button>
+            </div>
+            <div class="inspector-body">
+              <div class="form-group">
+                <label>ID del Nodo</label>
+                <input type="text" id="node-id" disabled>
+              </div>
+              <div class="form-group">
+                <label>Etiqueta</label>
+                <input type="text" id="node-label">
+              </div>
+              <div class="form-group">
+                <label>Tipo de Nodo</label>
+                <select id="node-type">
+                  <option value="Schema">Schema (Base de Datos)</option>
+                  <option value="Class">Class</option>
+                  <option value="Function">Function</option>
+                  <option value="Module">Module</option>
+                  <option value="Concept">Concept</option>
+                  <option value="Document">Document</option>
+                  <option value="Config">Config</option>
+                  <option value="Asset">Asset</option>
+                </select>
+              </div>
+              <div class="form-group">
+                <label>Ruta de Archivo</label>
+                <input type="text" id="node-path">
+              </div>
+              <div class="form-group">
+                <label>Notas / Contexto Arquitectónico</label>
+                <textarea id="node-desc" rows="5"></textarea>
+              </div>
+              <div class="inspector-actions">
+                <button id="btn-save-node" class="primary">Guardar</button>
+                <button id="btn-delete-node" class="danger">Eliminar</button>
+              </div>
+            </div>
+          </aside>
         </div>
-        <div class="stat-card">
-          <div class="label">Total Conexiones</div>
-          <div id="stat-edges" class="value">0</div>
-        </div>
-        
-        <div class="sidebar-header" style="margin-top:16px;">Filtros de Tipo</div>
-        <div class="form-group" style="margin-top:8px;">
-          <select id="filter-node-type">
-            <option value="ALL">Todos los tipos</option>
-            <option value="Module">Module / Archivo</option>
-            <option value="Class">Class</option>
-            <option value="Function">Function</option>
-            <option value="Concept">Concept</option>
-            <option value="Schema">Schema / DB</option>
-            <option value="Document">Document</option>
-          </select>
-        </div>
-
-        <div class="sidebar-header" style="margin-top:16px;">Herramientas Manuales</div>
-        <button id="btn-add-node-manual" style="width: 100%; margin-top: 8px;">+ Crear Nodo Manual</button>
-      </div>
-
-      <div id="tab-report" class="tab-content" style="display:none; padding: 0;">
-        <div id="report-container" class="report-view">
-          Selecciona un proyecto para ver el reporte.
-        </div>
-      </div>
-    </aside>
-
-    <!-- Center Graph Canvas -->
-    <main class="graph-container">
-      <div class="graph-overlay-tools">
-        <button id="btn-fit" title="Centrar Grafo">🎯 Centrar</button>
-        <button id="btn-layout-cose" title="Reordenar Orgánico">🔄 Reorganizar</button>
-      </div>
-      <div id="cy"></div>
-    </main>
-
-    <!-- Right Drawer: Node Inspector / Editor -->
-    <aside id="inspector" class="inspector-drawer hidden">
-      <div class="inspector-header">
-        <span style="font-weight: 600; font-size: 14px;">Editor de Nodo</span>
-        <button id="btn-close-inspector" style="padding: 2px 6px;">✕</button>
-      </div>
-      <div class="inspector-body">
-        <div class="form-group">
-          <label>ID del Nodo</label>
-          <input type="text" id="node-id" disabled style="opacity: 0.7;">
-        </div>
-        <div class="form-group">
-          <label>Etiqueta (Label)</label>
-          <input type="text" id="node-label">
-        </div>
-        <div class="form-group">
-          <label>Tipo de Nodo</label>
-          <select id="node-type">
-            <option value="Module">Module</option>
-            <option value="Class">Class</option>
-            <option value="Function">Function</option>
-            <option value="Concept">Concept</option>
-            <option value="Schema">Schema</option>
-            <option value="Document">Document</option>
-          </select>
-        </div>
-        <div class="form-group">
-          <label>Ruta de Archivo</label>
-          <input type="text" id="node-path">
-        </div>
-        <div class="form-group">
-          <label>Notas / Contexto Arquitectónico</label>
-          <textarea id="node-desc" rows="5" placeholder="Escribe notas de arquitectura para humanos o la IA..."></textarea>
-        </div>
-
-        <div style="display:flex; gap:8px; margin-top:10px;">
-          <button id="btn-save-node" class="primary" style="flex:1;">Guardar Cambios</button>
-          <button id="btn-delete-node" class="danger">Eliminar</button>
-        </div>
-      </div>
-    </aside>
-
-  </div>
-
-  <!-- Modal: Crear Nuevo Proyecto -->
-  <div id="modal-project" class="modal-backdrop hidden">
-    <div class="modal">
-      <h3>Crear Nuevo Proyecto</h3>
-      <div class="form-group">
-        <label>ID del Proyecto (sin espacios, ej. personal_app)</label>
-        <input type="text" id="new-proj-id" placeholder="mi_proyecto_1">
-      </div>
-      <div class="form-group">
-        <label>Nombre Descriptivo</label>
-        <input type="text" id="new-proj-name" placeholder="Mi Proyecto Personal">
-      </div>
-      <div class="modal-actions">
-        <button id="btn-cancel-proj">Cancelar</button>
-        <button id="btn-confirm-proj" class="primary">Crear</button>
       </div>
     </div>
-  </div>
 
-  <!-- Modal: Ingestar Directorio -->
-  <div id="modal-ingest" class="modal-backdrop hidden">
-    <div class="modal">
-      <h3>Indexar Directorio de Código</h3>
-      <div class="form-group">
-        <label>Proyecto Destino</label>
-        <input type="text" id="ingest-proj-id" placeholder="proyecto_actual" disabled>
-      </div>
-      <div class="form-group">
-        <label>Ruta Absoluta del Directorio en el Servidor</label>
-        <input type="text" id="ingest-dir-path" placeholder="/home/dimigi/proyectos/mi_app">
-      </div>
-      <div class="modal-actions">
-        <button id="btn-cancel-ingest">Cancelar</button>
-        <button id="btn-confirm-ingest" class="primary">Iniciar Escaneo</button>
+    <!-- 2. Componente Resumen -->
+    <div id="view-summary" class="view-module hidden">
+      <div id="summary-container-root">
+        <div class="summary-view-container">
+          <div class="summary-header-title">Métricas y Filtros del Proyecto</div>
+          <div class="summary-grid">
+            <div class="summary-card">
+              <div class="summary-card-label">Total Nodos</div>
+              <div id="summary-stat-nodes" class="summary-card-value">0</div>
+              <div class="summary-card-sub">Clases, Módulos, Schemas y Docs</div>
+            </div>
+            <div class="summary-card">
+              <div class="summary-card-label">Total Conexiones</div>
+              <div id="summary-stat-edges" class="summary-card-value">0</div>
+              <div class="summary-card-sub">Imports, defines, inherits y traits</div>
+            </div>
+            <div class="summary-card">
+              <div class="summary-card-label">Archivos Indexados</div>
+              <div id="summary-stat-files" class="summary-card-value">0</div>
+              <div id="summary-stat-types" class="summary-card-sub">Sin datos</div>
+            </div>
+          </div>
+          <div class="summary-section">
+            <div class="section-title">Filtrado Rápido del Grafo</div>
+            <div class="summary-controls-row">
+              <div class="form-group flex-1">
+                <label>Filtrar por Tipo de Nodo</label>
+                <select id="summary-filter-type">
+                  <option value="ALL">Todos los tipos</option>
+                  <option value="Schema">🗄️ Schema (Tablas DB / Prisma)</option>
+                  <option value="Class">📦 Class / Trait / Model</option>
+                  <option value="Function">⚡ Function / Method</option>
+                  <option value="Module">📄 Module / Archivo</option>
+                  <option value="Concept">💡 Concept / Arquitectura</option>
+                  <option value="Document">📑 Document (Markdown/Text)</option>
+                  <option value="Config">⚙️ Config (JSON/YAML)</option>
+                </select>
+              </div>
+              <div class="form-group flex-2">
+                <label>Buscar nodo o archivo</label>
+                <input type="text" id="summary-search-nodes" placeholder="Ej: PaymentProcessor, AuthEngine, gateway.py...">
+              </div>
+            </div>
+          </div>
+          <div class="summary-section">
+            <div class="section-title">Distribución de Código</div>
+            <div id="summary-breakdown-list" class="breakdown-grid"></div>
+          </div>
+        </div>
       </div>
     </div>
-  </div>
 
-  <!-- Scripts -->
-  <script src="/js/app.js"></script>
+    <!-- 3. Componente Reporte Markdown -->
+    <div id="view-report" class="view-module hidden">
+      <div id="report-container-root">
+        <div class="report-view-container">
+          <div class="report-header-row">
+            <div class="report-title">Reporte Arquitectónico (GRAPH_REPORT.md)</div>
+            <button id="btn-refresh-report" class="btn-sm">🔄 Recargar Reporte</button>
+          </div>
+          <div id="report-content-body" class="report-markdown-body">
+            <p style="color:var(--text-muted);">Cargando reporte arquitectónico...</p>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- 4. Componente Archivos No Registrados -->
+    <div id="view-unregistered" class="view-module hidden">
+      <div id="unregistered-container-root">
+        <div class="unregistered-view-container">
+          <div class="unregistered-header-title">Archivos Sin Parser / No Categorizados</div>
+          <p class="unregistered-desc">
+            Extensiones encontradas en el código fuente que no tienen analizador semántico asignado:
+          </p>
+          <div id="unregistered-table-wrapper" class="unregistered-table-card"></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- 5. Componente Tareas Asíncronas -->
+    <div id="view-tasks" class="view-module hidden">
+      <div id="tasks-container-root">
+        <div class="tasks-view-container">
+          <div class="tasks-header-row">
+            <div>
+              <div class="tasks-title">Cola de Tareas Asíncronas</div>
+              <div class="tasks-subtitle">Monitor de indexaciones y ejecuciones en segundo plano</div>
+            </div>
+            <button id="btn-refresh-tasks" class="btn-sm">🔄 Actualizar</button>
+          </div>
+          <div id="tasks-list-card" class="tasks-table-card">
+            <p style="color:var(--text-muted);">Consultando tareas...</p>
+          </div>
+        </div>
+      </div>
+    </div>
+
+  </main>
+
+  <!-- Módulos JavaScript -->
+  <script type="module" src="/js/app.js"></script>
 </body>
 </html>

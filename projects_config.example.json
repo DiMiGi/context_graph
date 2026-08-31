@@ -1,0 +1,9 @@
+{
+  "projects": [
+    {
+      "id": "mi_proyecto",
+      "name": "Mi Proyecto",
+      "host_path": "/path/to/my_project"
+    }
+  ]
+}

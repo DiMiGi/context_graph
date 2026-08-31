@@ -13,6 +13,7 @@ class AddNodeRequest(BaseModel):
     path: Optional[str] = None
     description: Optional[str] = ""
     community: Optional[int] = 0
+    origin: Optional[str] = "manual"
 
 class UpdateNodeRequest(BaseModel):
     label: Optional[str] = None
@@ -20,6 +21,7 @@ class UpdateNodeRequest(BaseModel):
     path: Optional[str] = None
     description: Optional[str] = None
     community: Optional[int] = None
+    origin: Optional[str] = None
     metadata: Optional[Dict[str, Any]] = None
 
 class AddEdgeRequest(BaseModel):
@@ -27,6 +29,7 @@ class AddEdgeRequest(BaseModel):
     target: str
     relation: str = "relates_to"
     weight: Optional[float] = 1.0
+    origin: Optional[str] = "manual"
 
 @router.get("", response_model=GraphData)
 def get_graph(project_id: str):
@@ -46,12 +49,15 @@ def add_node(project_id: str, req: AddNodeRequest):
     if not graph:
         raise HTTPException(status_code=404, detail="Graph not found")
 
-    # Check if exists
     for n in graph.nodes:
         if n.id == req.id:
             raise HTTPException(status_code=400, detail="Node already exists")
 
-    node = Node(**req.model_dump())
+    node_dict = req.model_dump()
+    node_dict["is_custom"] = True
+    node_dict["origin"] = req.origin or "manual"
+
+    node = Node(**node_dict)
     graph.nodes.append(node)
     GraphStorage.save_graph(graph)
     return node
@@ -75,6 +81,11 @@ def update_node(project_id: str, node_id: str, req: UpdateNodeRequest):
     for key, value in update_data.items():
         setattr(target_node, key, value)
 
+    # Marcar como editado manualmente / por IA
+    target_node.is_custom = True
+    if not req.origin:
+        target_node.origin = "manual"
+
     GraphStorage.save_graph(graph)
     return target_node
 
@@ -96,12 +107,15 @@ def add_edge(project_id: str, req: AddEdgeRequest):
     if not graph:
         raise HTTPException(status_code=404, detail="Graph not found")
 
-    # Verify both nodes exist
     node_ids = {n.id for n in graph.nodes}
     if req.source not in node_ids or req.target not in node_ids:
         raise HTTPException(status_code=400, detail="Both source and target nodes must exist")
 
-    edge = Edge(**req.model_dump())
+    edge_dict = req.model_dump()
+    edge_dict["is_custom"] = True
+    edge_dict["origin"] = req.origin or "manual"
+
+    edge = Edge(**edge_dict)
     graph.edges.append(edge)
     GraphStorage.save_graph(graph)
     return edge

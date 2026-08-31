@@ -1,9 +1,11 @@
 .env
+projects_config.json
+docker-compose-volumes.yml
 __pycache__/
 *.py[cod]
 *$py.class
 .venv/
 env/
 venv/
-data/projects/*
-!data/projects/.gitkeep
+data/projects/
+data/

@@ -10,10 +10,11 @@ services:
     ports:
       - "${PORT:-8899}:${PORT:-8899}"
     volumes:
-      # Persistencia de grafos
+      # Persistencia estática base de grafos y configuración
       - ./data/projects:/data/projects
-      # Montaje para poder escanear proyectos locales del host (read-only)
-      - /home/dimigi/proyectos:/host_proyectos:ro
+      - ./projects_config.json:/app/projects_config.json:ro
+      - ./web:/app/web
+      - ./server/app:/app/server/app
     environment:
       - DATA_PATH=/data/projects
       - PORT=${PORT:-8899}
