@@ -1,0 +1,20 @@
+services:
+  local_graphs:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: local_graphs
+    restart: unless-stopped
+    env_file:
+      - .env
+    ports:
+      - "${PORT:-8899}:${PORT:-8899}"
+    volumes:
+      # Persistencia de grafos
+      - ./data/projects:/data/projects
+      # Montaje para poder escanear proyectos locales del host (read-only)
+      - /home/dimigi/proyectos:/host_proyectos:ro
+    environment:
+      - DATA_PATH=/data/projects
+      - PORT=${PORT:-8899}
+      - HOST=0.0.0.0

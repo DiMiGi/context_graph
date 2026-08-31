@@ -1,0 +1,175 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>local_graphs | Gestor de Grafos de Conocimiento</title>
+  <link rel="stylesheet" href="/css/style.css">
+  <!-- Cytoscape & Extensions -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/cytoscape/3.28.1/cytoscape.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+</head>
+<body>
+
+  <!-- Header Bar -->
+  <header>
+    <div class="brand">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+        <circle cx="18" cy="5" r="3"></circle>
+        <circle cx="6" cy="12" r="3"></circle>
+        <circle cx="18" cy="19" r="3"></circle>
+        <line x1="8.59" y1="13.51" x2="15.42" y2="17.49"></line>
+        <line x1="15.41" y1="6.51" x2="8.59" y2="10.49"></line>
+      </svg>
+      <span>LOCAL_GRAPHS</span>
+    </div>
+
+    <div class="project-controls">
+      <select id="project-select">
+        <option value="">Seleccionar Proyecto...</option>
+      </select>
+      <button id="btn-new-project">+ Nuevo</button>
+      <button id="btn-ingest-dir" class="primary">📥 Indexar Carpeta</button>
+    </div>
+  </header>
+
+  <!-- Main Workspace -->
+  <div class="app-container">
+    
+    <!-- Left Sidebar / Stats & Filters -->
+    <aside class="sidebar">
+      <div class="nav-tabs">
+        <button class="tab-btn active" data-tab="tab-stats">Resumen</button>
+        <button class="tab-btn" data-tab="tab-report">Reporte</button>
+      </div>
+
+      <div id="tab-stats" class="tab-content">
+        <div class="sidebar-header">Métricas del Proyecto</div>
+        <div class="stat-card">
+          <div class="label">Total Nodos</div>
+          <div id="stat-nodes" class="value">0</div>
+        </div>
+        <div class="stat-card">
+          <div class="label">Total Conexiones</div>
+          <div id="stat-edges" class="value">0</div>
+        </div>
+        
+        <div class="sidebar-header" style="margin-top:16px;">Filtros de Tipo</div>
+        <div class="form-group" style="margin-top:8px;">
+          <select id="filter-node-type">
+            <option value="ALL">Todos los tipos</option>
+            <option value="Module">Module / Archivo</option>
+            <option value="Class">Class</option>
+            <option value="Function">Function</option>
+            <option value="Concept">Concept</option>
+            <option value="Schema">Schema / DB</option>
+            <option value="Document">Document</option>
+          </select>
+        </div>
+
+        <div class="sidebar-header" style="margin-top:16px;">Herramientas Manuales</div>
+        <button id="btn-add-node-manual" style="width: 100%; margin-top: 8px;">+ Crear Nodo Manual</button>
+      </div>
+
+      <div id="tab-report" class="tab-content" style="display:none; padding: 0;">
+        <div id="report-container" class="report-view">
+          Selecciona un proyecto para ver el reporte.
+        </div>
+      </div>
+    </aside>
+
+    <!-- Center Graph Canvas -->
+    <main class="graph-container">
+      <div class="graph-overlay-tools">
+        <button id="btn-fit" title="Centrar Grafo">🎯 Centrar</button>
+        <button id="btn-layout-cose" title="Reordenar Orgánico">🔄 Reorganizar</button>
+      </div>
+      <div id="cy"></div>
+    </main>
+
+    <!-- Right Drawer: Node Inspector / Editor -->
+    <aside id="inspector" class="inspector-drawer hidden">
+      <div class="inspector-header">
+        <span style="font-weight: 600; font-size: 14px;">Editor de Nodo</span>
+        <button id="btn-close-inspector" style="padding: 2px 6px;">✕</button>
+      </div>
+      <div class="inspector-body">
+        <div class="form-group">
+          <label>ID del Nodo</label>
+          <input type="text" id="node-id" disabled style="opacity: 0.7;">
+        </div>
+        <div class="form-group">
+          <label>Etiqueta (Label)</label>
+          <input type="text" id="node-label">
+        </div>
+        <div class="form-group">
+          <label>Tipo de Nodo</label>
+          <select id="node-type">
+            <option value="Module">Module</option>
+            <option value="Class">Class</option>
+            <option value="Function">Function</option>
+            <option value="Concept">Concept</option>
+            <option value="Schema">Schema</option>
+            <option value="Document">Document</option>
+          </select>
+        </div>
+        <div class="form-group">
+          <label>Ruta de Archivo</label>
+          <input type="text" id="node-path">
+        </div>
+        <div class="form-group">
+          <label>Notas / Contexto Arquitectónico</label>
+          <textarea id="node-desc" rows="5" placeholder="Escribe notas de arquitectura para humanos o la IA..."></textarea>
+        </div>
+
+        <div style="display:flex; gap:8px; margin-top:10px;">
+          <button id="btn-save-node" class="primary" style="flex:1;">Guardar Cambios</button>
+          <button id="btn-delete-node" class="danger">Eliminar</button>
+        </div>
+      </div>
+    </aside>
+
+  </div>
+
+  <!-- Modal: Crear Nuevo Proyecto -->
+  <div id="modal-project" class="modal-backdrop hidden">
+    <div class="modal">
+      <h3>Crear Nuevo Proyecto</h3>
+      <div class="form-group">
+        <label>ID del Proyecto (sin espacios, ej. personal_app)</label>
+        <input type="text" id="new-proj-id" placeholder="mi_proyecto_1">
+      </div>
+      <div class="form-group">
+        <label>Nombre Descriptivo</label>
+        <input type="text" id="new-proj-name" placeholder="Mi Proyecto Personal">
+      </div>
+      <div class="modal-actions">
+        <button id="btn-cancel-proj">Cancelar</button>
+        <button id="btn-confirm-proj" class="primary">Crear</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Modal: Ingestar Directorio -->
+  <div id="modal-ingest" class="modal-backdrop hidden">
+    <div class="modal">
+      <h3>Indexar Directorio de Código</h3>
+      <div class="form-group">
+        <label>Proyecto Destino</label>
+        <input type="text" id="ingest-proj-id" placeholder="proyecto_actual" disabled>
+      </div>
+      <div class="form-group">
+        <label>Ruta Absoluta del Directorio en el Servidor</label>
+        <input type="text" id="ingest-dir-path" placeholder="/home/dimigi/proyectos/mi_app">
+      </div>
+      <div class="modal-actions">
+        <button id="btn-cancel-ingest">Cancelar</button>
+        <button id="btn-confirm-ingest" class="primary">Iniciar Escaneo</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Scripts -->
+  <script src="/js/app.js"></script>
+</body>
+</html>
