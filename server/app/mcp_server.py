@@ -4,11 +4,11 @@ from mcp.server.fastmcp import FastMCP
 from app.graph.storage import GraphStorage
 from app.graph.model import Node, Edge
 from app.ingestion.engine import IngestionEngine
-from app.config import get_configured_projects
+from app.config import get_configured_projects, is_project_configured
 import os
 
 # FastMCP Server
-mcp = FastMCP("local_graphs")
+mcp = FastMCP("context_graph")
 
 # Exponer el manejador SSE directamente en /sse y /messages
 mcp_sse_app = mcp.sse_app()
@@ -22,12 +22,16 @@ def list_projects() -> str:
 @mcp.tool()
 def get_project_summary(project_id: str) -> str:
     """Gets the architectural summary report (GRAPH_REPORT.md) for a project."""
+    if not is_project_configured(project_id):
+        return f"Error: Project '{project_id}' is not configured or enabled in projects_config.json."
     report = GraphStorage.load_report(project_id)
     return report
 
 @mcp.tool()
 def query_graph_nodes(project_id: str, query: str = "", node_type: str = "") -> str:
     """Search for nodes in a project's knowledge graph by name/query and optional type (Module, Class, Function, Concept, Schema, Document)."""
+    if not is_project_configured(project_id):
+        return f"Error: Project '{project_id}' is not configured or enabled in projects_config.json."
     graph = GraphStorage.load_graph(project_id)
     if not graph:
         return f"Project '{project_id}' not found."
@@ -45,6 +49,8 @@ def query_graph_nodes(project_id: str, query: str = "", node_type: str = "") -> 
 @mcp.tool()
 def get_node_connections(project_id: str, node_id: str) -> str:
     """Finds all incoming and outgoing connections/dependencies for a specific node."""
+    if not is_project_configured(project_id):
+        return f"Error: Project '{project_id}' is not configured or enabled in projects_config.json."
     graph = GraphStorage.load_graph(project_id)
     if not graph:
         return f"Project '{project_id}' not found."
@@ -62,6 +68,8 @@ def get_node_connections(project_id: str, node_id: str) -> str:
 @mcp.tool()
 def update_node_context(project_id: str, node_id: str, description: str) -> str:
     """Allows AI agents to enrich notes or architectural context on a specific node without breaking scanner data."""
+    if not is_project_configured(project_id):
+        return f"Error: Project '{project_id}' is not configured or enabled in projects_config.json."
     graph = GraphStorage.load_graph(project_id)
     if not graph:
         return f"Project '{project_id}' not found."
@@ -79,6 +87,8 @@ def update_node_context(project_id: str, node_id: str, description: str) -> str:
 @mcp.tool()
 def add_custom_connection(project_id: str, source: str, target: str, relation: str = "relates_to") -> str:
     """Allows AI agents to create new architectural relationships between nodes that persist across re-indexing."""
+    if not is_project_configured(project_id):
+        return f"Error: Project '{project_id}' is not configured or enabled in projects_config.json."
     graph = GraphStorage.load_graph(project_id)
     if not graph:
         return f"Project '{project_id}' not found."
@@ -99,6 +109,8 @@ def add_custom_connection(project_id: str, source: str, target: str, relation: s
 @mcp.tool()
 def reindex_modified_files(project_id: str, file_paths: List[str]) -> str:
     """Allows AI agents to partially re-index only the files they just modified or created, leaving all other graph connections and notes intact."""
+    if not is_project_configured(project_id):
+        return f"Error: Project '{project_id}' is not configured or enabled in projects_config.json."
     configured = get_configured_projects()
     target_config = next((cp for cp in configured if cp.get("id") == project_id), None)
 

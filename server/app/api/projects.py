@@ -4,7 +4,7 @@ from pydantic import BaseModel
 import os
 from app.graph.storage import GraphStorage
 from app.graph.model import GraphData
-from app.config import get_configured_projects
+from app.config import get_configured_projects, is_project_configured
 from app.ingestion.engine import IngestionEngine
 
 router = APIRouter(prefix="/api/projects", tags=["projects"])
@@ -19,30 +19,7 @@ class ReindexRequest(BaseModel):
 
 @router.get("", response_model=List[Dict[str, Any]])
 def list_projects():
-    existing = {p["id"]: p for p in GraphStorage.list_projects()}
-    configured = get_configured_projects()
-
-    for cp in configured:
-        pid = cp.get("id")
-        host_path = cp.get("host_path", "")
-        folder_name = os.path.basename(host_path.rstrip("/\\")) if host_path else pid
-        inferred_container_path = cp.get("container_path", f"/sources/{folder_name}")
-
-        if pid not in existing:
-            existing[pid] = {
-                "id": pid,
-                "name": cp.get("name", pid),
-                "nodes_count": 0,
-                "edges_count": 0,
-                "updated_at": 0,
-                "container_path": inferred_container_path,
-                "is_configured": True
-            }
-        else:
-            existing[pid]["container_path"] = inferred_container_path
-            existing[pid]["is_configured"] = True
-
-    return sorted(list(existing.values()), key=lambda x: x["updated_at"], reverse=True)
+    return GraphStorage.list_projects()
 
 @router.post("", response_model=GraphData)
 def create_project(req: CreateProjectRequest):
@@ -62,6 +39,12 @@ def reindex_project(
     - Modo 'partial': Purga y re-parsea solo los archivos indicados en target_paths.
     - Modo 'rebuild': Purga total (solo permitido si viene explícitamente desde la Web UI).
     """
+    if not is_project_configured(project_id):
+        raise HTTPException(
+            status_code=404,
+            detail=f"El proyecto '{project_id}' no está configurado o habilitado en projects_config.json."
+        )
+
     mode = req.mode if req else "incremental"
     target_paths = req.target_paths if req else None
 

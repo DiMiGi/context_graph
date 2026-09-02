@@ -1,5 +1,6 @@
 // Módulo de Tareas Asíncronas
 let pollingInterval = null;
+const knownTaskStatuses = new Map();
 
 export async function fetchTasks(onTaskCompleted) {
   const container = document.getElementById('tasks-list-card');
@@ -50,6 +51,15 @@ export async function fetchTasks(onTaskCompleted) {
           <td style="padding:10px; color:var(--text-muted);">${resultText}</td>
         </tr>
       `;
+    });
+
+    // Detectar tareas recién completadas para auto-recargar vistas
+    tasks.forEach(t => {
+      const prevStatus = knownTaskStatuses.get(t.id);
+      if (prevStatus && prevStatus !== 'completed' && t.status === 'completed') {
+        if (onTaskCompleted) onTaskCompleted(t.project_id, t);
+      }
+      knownTaskStatuses.set(t.id, t.status);
     });
 
     html += '</tbody></table>';

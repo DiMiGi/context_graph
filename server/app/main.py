@@ -10,7 +10,11 @@ from app.api.ingest_api import router as ingest_router
 from app.api.tasks_api import router as tasks_router
 from app.mcp_server import mcp
 
-app = FastAPI(title="local_graphs", description="Gestor y Visor Web de Grafos de Conocimiento Multi-Proyecto")
+app = FastAPI(
+    title="context_graph",
+    version="1.1.0",
+    description="Gestor y Visor Web de Grafos de Conocimiento Multi-Proyecto"
+)
 
 # CORS
 app.add_middleware(

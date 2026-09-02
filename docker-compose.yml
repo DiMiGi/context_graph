@@ -1,9 +1,9 @@
 services:
-  local_graphs:
+  context_graph:
     build:
       context: .
       dockerfile: Dockerfile
-    container_name: local_graphs
+    container_name: context_graph
     restart: unless-stopped
     env_file:
       - .env

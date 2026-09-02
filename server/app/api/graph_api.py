@@ -3,8 +3,13 @@ from typing import Optional, Dict, Any
 from pydantic import BaseModel
 from app.graph.storage import GraphStorage
 from app.graph.model import GraphData, Node, Edge
+from app.config import is_project_configured
 
 router = APIRouter(prefix="/api/projects/{project_id}/graph", tags=["graph"])
+
+def check_project_configured(project_id: str):
+    if not is_project_configured(project_id):
+        raise HTTPException(status_code=404, detail=f"Project '{project_id}' is not configured or enabled")
 
 class AddNodeRequest(BaseModel):
     id: str
@@ -33,6 +38,7 @@ class AddEdgeRequest(BaseModel):
 
 @router.get("", response_model=GraphData)
 def get_graph(project_id: str):
+    check_project_configured(project_id)
     graph = GraphStorage.load_graph(project_id)
     if not graph:
         raise HTTPException(status_code=404, detail="Graph not found")
@@ -40,11 +46,13 @@ def get_graph(project_id: str):
 
 @router.get("/report")
 def get_report(project_id: str):
+    check_project_configured(project_id)
     report = GraphStorage.load_report(project_id)
     return {"report": report}
 
 @router.post("/nodes", response_model=Node)
 def add_node(project_id: str, req: AddNodeRequest):
+    check_project_configured(project_id)
     graph = GraphStorage.load_graph(project_id)
     if not graph:
         raise HTTPException(status_code=404, detail="Graph not found")
@@ -64,6 +72,7 @@ def add_node(project_id: str, req: AddNodeRequest):
 
 @router.put("/nodes/{node_id:path}", response_model=Node)
 def update_node(project_id: str, node_id: str, req: UpdateNodeRequest):
+    check_project_configured(project_id)
     graph = GraphStorage.load_graph(project_id)
     if not graph:
         raise HTTPException(status_code=404, detail="Graph not found")
@@ -91,6 +100,7 @@ def update_node(project_id: str, node_id: str, req: UpdateNodeRequest):
 
 @router.delete("/nodes/{node_id:path}")
 def delete_node(project_id: str, node_id: str):
+    check_project_configured(project_id)
     graph = GraphStorage.load_graph(project_id)
     if not graph:
         raise HTTPException(status_code=404, detail="Graph not found")
@@ -103,6 +113,7 @@ def delete_node(project_id: str, node_id: str):
 
 @router.post("/edges", response_model=Edge)
 def add_edge(project_id: str, req: AddEdgeRequest):
+    check_project_configured(project_id)
     graph = GraphStorage.load_graph(project_id)
     if not graph:
         raise HTTPException(status_code=404, detail="Graph not found")
@@ -122,6 +133,7 @@ def add_edge(project_id: str, req: AddEdgeRequest):
 
 @router.delete("/edges")
 def delete_edge(project_id: str, source: str, target: str, relation: Optional[str] = None):
+    check_project_configured(project_id)
     graph = GraphStorage.load_graph(project_id)
     if not graph:
         raise HTTPException(status_code=404, detail="Graph not found")

@@ -6,7 +6,7 @@ from typing import Dict, Any, Optional, List
 from fastapi import APIRouter, HTTPException, BackgroundTasks, Header
 from pydantic import BaseModel
 from app.graph.storage import GraphStorage
-from app.config import get_configured_projects
+from app.config import get_configured_projects, is_project_configured
 from app.ingestion.engine import IngestionEngine
 
 router = APIRouter(prefix="/api/tasks", tags=["tasks"])
@@ -75,6 +75,12 @@ def start_reindex_task(
     background_tasks: BackgroundTasks = None,
     x_requested_by: Optional[str] = Header(None)
 ):
+    if not is_project_configured(project_id):
+        raise HTTPException(
+            status_code=404,
+            detail=f"El proyecto '{project_id}' no está configurado o habilitado en projects_config.json."
+        )
+
     mode = req.mode if req else "incremental"
     target_paths = req.target_paths if req else None
 

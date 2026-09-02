@@ -1,5 +1,5 @@
 // Orquestador Principal de la Aplicación Web Modular
-import { initCanvas, setGraphData, filterGraph } from '/views/canvas/canvas.js';
+import { initCanvas, setGraphData, filterGraph, resizeCanvas } from '/views/canvas/canvas.js';
 import { renderSummary } from '/views/summary/summary.js';
 import { loadReport } from '/views/report/report.js';
 import { renderUnregistered } from '/views/unregistered/unregistered.js';
@@ -9,7 +9,7 @@ let currentProjectId = "";
 let rawGraphData = null;
 
 // 1. Cargar Lista de Proyectos
-async function loadProjects() {
+async function loadProjects(targetProjectId = null) {
   try {
     const res = await fetch('/api/projects');
     const projects = await res.json();
@@ -24,9 +24,12 @@ async function loadProjects() {
       select.appendChild(opt);
     });
 
-    if (projects.length > 0 && !currentProjectId) {
-      select.value = projects[0].id;
-      loadProjectData(projects[0].id);
+    const activeToSelect = targetProjectId || currentProjectId || (projects.length > 0 ? projects[0].id : "");
+    if (activeToSelect) {
+      select.value = activeToSelect;
+      if (!currentProjectId || targetProjectId) {
+        loadProjectData(activeToSelect);
+      }
     }
   } catch (err) {
     console.error('Error cargando proyectos:', err);
@@ -79,7 +82,9 @@ function switchView(viewId) {
     }
   });
 
-  if (viewId === 'view-tasks') {
+  if (viewId === 'view-canvas') {
+    setTimeout(() => resizeCanvas(), 50);
+  } else if (viewId === 'view-tasks') {
     fetchTasks();
   }
 }
@@ -93,7 +98,12 @@ document.addEventListener('DOMContentLoaded', async () => {
 
   // 2. Cargar Proyectos y Datos del grafo inicial
   await loadProjects();
-  startTasksPolling();
+  startTasksPolling((completedProjectId) => {
+    loadProjects();
+    if (completedProjectId === currentProjectId) {
+      loadProjectData(currentProjectId);
+    }
+  });
 
   // 3. Navegación Pestañas Superiores
   document.querySelectorAll('.nav-tab').forEach(tab => {

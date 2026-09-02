@@ -25,7 +25,7 @@ $VolumesStr = $Volumes -join "`n"
 # 2. Generar docker-compose-volumes.yml
 $OverrideContent = @"
 services:
-  local_graphs:
+  context_graph:
     volumes:
 $VolumesStr
 "@
@@ -35,4 +35,4 @@ Write-Host "docker-compose-volumes.yml generado dinamicamente (container_path in
 
 # 3. Levantar combinando ambos archivos
 docker compose -f $BaseCompose -f $VolumesCompose up -d --build
-Write-Host "local_graphs listo en http://localhost:8899" -ForegroundColor Cyan
+Write-Host "context_graph listo en http://localhost:8899" -ForegroundColor Cyan

@@ -2,7 +2,7 @@ $ScriptDir = Split-Path -Parent $MyInvocation.MyCommand.Path
 $BaseCompose = Join-Path $ScriptDir "docker-compose.yml"
 $VolumesCompose = Join-Path $ScriptDir "docker-compose-volumes.yml"
 
-Write-Host "Deteniendo local_graphs..." -ForegroundColor Yellow
+Write-Host "Deteniendo context_graph..." -ForegroundColor Yellow
 
 if (Test-Path $VolumesCompose) {
     docker compose -f $BaseCompose -f $VolumesCompose down
@@ -10,4 +10,4 @@ if (Test-Path $VolumesCompose) {
     docker compose -f $BaseCompose down
 }
 
-Write-Host "local_graphs detenido correctamente." -ForegroundColor Green
+Write-Host "context_graph detenido correctamente." -ForegroundColor Green

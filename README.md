@@ -1,4 +1,4 @@
-# 🌐 local_graphs
+# 🌐 context_graph
 
 Gestor y visor web interactivo de grafos de conocimiento multi-proyecto para desarrolladores y asistentes de IA (Antigravity & Claude).
 
@@ -40,7 +40,7 @@ Gestor y visor web interactivo de grafos de conocimiento multi-proyecto para des
      .\start.ps1
      ```
 
-   *El script regenerará automáticamente el `docker-compose.yml` con los volúmenes de todos los proyectos configurados y levantará el contenedor.*
+   *El script regenerará automáticamente el `docker-compose-volumes.yml` con los volúmenes de todos los proyectos configurados y levantará el contenedor.*
 
 3. **Abrir la Interfaz Web:**
    Navega a [http://localhost:8899](http://localhost:8899).
@@ -49,13 +49,13 @@ Gestor y visor web interactivo de grafos de conocimiento multi-proyecto para des
 
 ## 🤖 Conexión con Asistentes de IA (MCP)
 
-`local_graphs` incluye un servidor MCP nativo expuesto vía SSE en `http://localhost:8899/sse`.
+`context_graph` incluye un servidor MCP nativo expuesto vía SSE en `http://localhost:8899/sse`.
 
 ### Para Antigravity (`~/.gemini/config/mcp_config.json`):
 ```json
 {
   "mcpServers": {
-    "local_graphs": {
+    "context_graph": {
       "serverUrl": "http://localhost:8899/sse"
     }
   }
@@ -66,7 +66,7 @@ Gestor y visor web interactivo de grafos de conocimiento multi-proyecto para des
 ```json
 {
   "mcpServers": {
-    "local_graphs": {
+    "context_graph": {
       "serverUrl": "http://localhost:8899/sse"
     }
   }

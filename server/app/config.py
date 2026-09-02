@@ -36,3 +36,12 @@ def get_configured_projects() -> List[Dict[str, Any]]:
             except Exception as e:
                 print(f"Error reading {cp}: {e}")
     return []
+
+def is_project_configured(project_id: str) -> bool:
+    """
+    Verifica si un project_id está explícitamente habilitado en projects_config.json.
+    """
+    configured = get_configured_projects()
+    if configured:
+        return any(p.get("id") == project_id for p in configured)
+    return False

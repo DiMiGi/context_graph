@@ -1,4 +1,5 @@
 import re
+import bisect
 from typing import List, Dict, Any, Tuple
 from app.ingestion.parsers.base import BaseParser
 
@@ -7,6 +8,45 @@ class PhpParser(BaseParser):
         nodes = []
         edges = []
         file_node_id = f"file:{file_rel_path}"
+
+        line_offsets = [0] + [m.end() for m in re.finditer(r"\n", content)]
+        total_lines = len(line_offsets)
+
+        def get_line(pos: int) -> int:
+            return bisect.bisect_right(line_offsets, pos)
+
+        def get_end_line(start_pos: int) -> int:
+            idx = content.find("{", start_pos)
+            if idx == -1:
+                return get_line(start_pos)
+            depth = 1
+            i = idx + 1
+            n = len(content)
+            while i < n and depth > 0:
+                ch = content[i]
+                if ch == "{":
+                    depth += 1
+                elif ch == "}":
+                    depth -= 1
+                elif ch in ('"', "'"):
+                    quote = ch
+                    i += 1
+                    while i < n and content[i] != quote:
+                        if content[i] == "\\":
+                            i += 1
+                        i += 1
+                i += 1
+            return get_line(i - 1 if i <= n else n - 1)
+
+        def get_phpdoc(pos: int) -> str:
+            sub = content[:pos].rstrip()
+            if sub.endswith("*/"):
+                start_doc = sub.rfind("/**")
+                if start_doc != -1:
+                    raw_doc = sub[start_doc + 3:-2]
+                    clean = "\n".join(l.strip().lstrip("*").strip() for l in raw_doc.splitlines())
+                    return clean.strip()[:300]
+            return ""
 
         # 1. Namespaces & Top-level Use Statements (Imports)
         namespace_match = re.search(r"namespace\s+([A-Za-z0-9_\\]+);", content)
@@ -49,13 +89,28 @@ class PhpParser(BaseParser):
             class_node_id = f"class:{file_rel_path}:{class_name}"
             current_class_id = class_node_id
 
+            start_l = get_line(m.start())
+            end_l = get_end_line(m.start())
+            doc = get_phpdoc(m.start())
+
+            implements_list = [i.strip() for i in implements_interfaces.split(",") if i.strip()] if implements_interfaces else []
+            bases = [extends_class] if extends_class else []
+
             nodes.append({
                 "id": class_node_id,
                 "label": class_name,
                 "type": "Class" if kind == "class" else kind.capitalize(),
                 "path": file_rel_path,
-                "description": f"PHP {kind} {full_class_name} defined in {file_rel_path}",
-                "metadata": {"namespace": current_namespace, "kind": kind, "file": file_rel_path}
+                "description": f"PHP {kind} {full_class_name} (L{start_l}-L{end_l}) in {file_rel_path}",
+                "metadata": {
+                    "start_line": start_l,
+                    "end_line": end_l,
+                    "namespace": current_namespace,
+                    "kind": kind,
+                    "bases": bases,
+                    "implements": implements_list,
+                    "docstring": doc
+                }
             })
             
             # Relación bidireccional y explícita: Archivo -> Clase (defines) y Clase -> Archivo (declared_in)
@@ -87,17 +142,17 @@ class PhpParser(BaseParser):
                     "relation": "inherits"
                 })
 
-            if implements_interfaces:
-                for iface in [i.strip() for i in implements_interfaces.split(",") if i.strip()]:
-                    edges.append({
-                        "source": class_node_id,
-                        "target": f"class:{iface}",
-                        "relation": "implements"
-                    })
+            for iface in implements_list:
+                edges.append({
+                    "source": class_node_id,
+                    "target": f"class:{iface}",
+                    "relation": "implements"
+                })
 
         # 3. Database Table Detection (Eloquent Model: protected $table = 'audit.audit_trail')
-        table_matches = re.findall(r"protected\s+\$table\s*=\s*['\"](.*?)['\"];", content)
-        for tbl in table_matches:
+        table_matches = re.finditer(r"protected\s+\$table\s*=\s*['\"](.*?)['\"];", content)
+        for tm in table_matches:
+            tbl = tm.group(1)
             table_id = f"schema:{tbl}"
             
             fillable_match = re.search(r"protected\s+\$fillable\s*=\s*\[(.*?)\];", content, re.DOTALL)
@@ -105,13 +160,15 @@ class PhpParser(BaseParser):
             if fillable_match:
                 fillable_cols = re.findall(r"['\"]([A-Za-z0-9_]+)['\"]", fillable_match.group(1))
 
+            tbl_line = get_line(tm.start())
+
             nodes.append({
                 "id": table_id,
                 "label": tbl,
                 "type": "Schema",
                 "path": file_rel_path,
                 "description": f"Database table '{tbl}' defined in Eloquent Model",
-                "metadata": {"columns": fillable_cols}
+                "metadata": {"columns": fillable_cols, "start_line": tbl_line, "end_line": tbl_line}
             })
             
             if current_class_id:
@@ -134,20 +191,54 @@ class PhpParser(BaseParser):
 
         # 4. Functions & Methods
         func_matches = re.finditer(
-            r"(?:public|protected|private)?\s*(?:static\s+)?function\s+([A-Za-z0-9_]+)\s*\(",
+            r"(?:(public|protected|private)\s+)?(?:static\s+)?function\s+([A-Za-z0-9_]+)\s*\((.*?)\)(?:\s*:\s*([A-Za-z0-9_\\?]+))?",
             content
         )
         for m in func_matches:
-            func_name = m.group(1)
+            visibility = m.group(1) or "public"
+            func_name = m.group(2)
+            params_raw = m.group(3) or ""
+            ret_type = m.group(4) or None
+
             if func_name.startswith("__") and func_name not in ("__construct", "__invoke"):
                 continue
+            
             func_node_id = f"func:{file_rel_path}:{func_name}"
+            start_l = get_line(m.start())
+            end_l = get_end_line(m.start())
+            doc = get_phpdoc(m.start())
+
+            params = []
+            if params_raw:
+                for p in params_raw.split(","):
+                    p_str = p.strip()
+                    if p_str:
+                        p_parts = p_str.split("$")
+                        if len(p_parts) == 2:
+                            p_type = p_parts[0].strip() or None
+                            p_name = "$" + p_parts[1].split("=")[0].strip()
+                            params.append({"name": p_name, "type": p_type})
+                        else:
+                            params.append({"name": p_str, "type": None})
+
+            ret_suffix = f": {ret_type}" if ret_type else ""
+            signature = f"{visibility} function {func_name}({params_raw}){ret_suffix}"
+
             nodes.append({
                 "id": func_node_id,
                 "label": func_name,
                 "type": "Function",
                 "path": file_rel_path,
-                "description": f"PHP Method {func_name}() in {file_rel_path}"
+                "description": f"PHP Method {func_name}() (L{start_l}-L{end_l}) in {file_rel_path}",
+                "metadata": {
+                    "start_line": start_l,
+                    "end_line": end_l,
+                    "signature": signature,
+                    "visibility": visibility,
+                    "parameters": params,
+                    "return_type": ret_type,
+                    "docstring": doc
+                }
             })
             
             parent_id = current_class_id if current_class_id else file_node_id

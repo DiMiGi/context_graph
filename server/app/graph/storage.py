@@ -23,34 +23,47 @@ class GraphStorage:
 
     @classmethod
     def list_projects(cls) -> List[Dict[str, Any]]:
+        from app.config import get_configured_projects
         os.makedirs(DATA_PATH, exist_ok=True)
+        configured = get_configured_projects()
         projects = []
-        for item in os.listdir(DATA_PATH):
-            full_path = os.path.join(DATA_PATH, item)
-            if os.path.isdir(full_path) and not item.startswith("."):
-                graph_path = os.path.join(full_path, "graph.json")
-                node_count = 0
-                edge_count = 0
-                name = item
-                updated_at = os.path.getmtime(full_path)
-                
-                if os.path.exists(graph_path):
-                    try:
-                        with open(graph_path, "r", encoding="utf-8") as f:
-                            data = json.load(f)
-                            node_count = len(data.get("nodes", []))
-                            edge_count = len(data.get("edges", []))
-                            name = data.get("name", item)
-                    except Exception:
-                        pass
-                
-                projects.append({
-                    "id": item,
-                    "name": name,
-                    "nodes_count": node_count,
-                    "edges_count": edge_count,
-                    "updated_at": updated_at
-                })
+        for cp in configured:
+            pid = cp.get("id")
+            if not pid:
+                continue
+
+            host_path = cp.get("host_path", "")
+            folder_name = os.path.basename(host_path.rstrip("/\\")) if host_path else pid
+            inferred_container_path = cp.get("container_path", f"/sources/{folder_name}")
+
+            proj_dir = cls.get_project_dir(pid)
+            graph_path = cls.get_graph_file(pid)
+            node_count = 0
+            edge_count = 0
+            name = cp.get("name", pid)
+            updated_at = 0.0
+
+            if os.path.exists(proj_dir):
+                updated_at = os.path.getmtime(proj_dir)
+
+            if os.path.exists(graph_path):
+                try:
+                    with open(graph_path, "r", encoding="utf-8") as f:
+                        data = json.load(f)
+                        node_count = len(data.get("nodes", []))
+                        edge_count = len(data.get("edges", []))
+                except Exception:
+                    pass
+
+            projects.append({
+                "id": pid,
+                "name": name,
+                "nodes_count": node_count,
+                "edges_count": edge_count,
+                "updated_at": updated_at,
+                "container_path": inferred_container_path,
+                "is_configured": True
+            })
         return sorted(projects, key=lambda x: x["updated_at"], reverse=True)
 
     @classmethod

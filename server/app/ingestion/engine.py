@@ -210,5 +210,5 @@ class IngestionEngine:
         else:
             report += "\n## ✅ Estado de Categorización\n\nTodos los archivos del proyecto han sido categorizados exitosamente.\n"
 
-        report += "\n---\n*Generado automáticamente por local_graphs Incremental Engine.*\n"
+        report += "\n---\n*Generado automáticamente por context_graph Incremental Engine.*\n"
         return report

@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>local_graphs | Gestor de Grafos de Conocimiento</title>
+  <title>context_graph | Gestor de Grafos de Conocimiento</title>
   
   <!-- Estilos Globales y Componentes Modulares -->
   <link rel="stylesheet" href="/css/style.css">
@@ -30,7 +30,7 @@
         <line x1="8.59" y1="13.51" x2="15.42" y2="17.49"></line>
         <line x1="15.41" y1="6.51" x2="8.59" y2="10.49"></line>
       </svg>
-      <span>LOCAL_GRAPHS</span>
+      <span>CONTEXT_GRAPH</span>
     </div>
 
     <!-- Navegación por Pestañas en la Barra Superior -->
@@ -96,9 +96,13 @@
                 <label>Ruta de Archivo</label>
                 <input type="text" id="node-path">
               </div>
+              <div id="node-meta-group" class="form-group">
+                <label>Metadata Estructural</label>
+                <div id="node-meta-container" style="font-family: var(--font-mono, monospace); font-size: 11px; background: rgba(0,0,0,0.25); padding: 8px; border-radius: 4px; border: 1px solid var(--border-color); color: #cbd5e1; max-height: 140px; overflow-y: auto; white-space: pre-wrap;"></div>
+              </div>
               <div class="form-group">
                 <label>Notas / Contexto Arquitectónico</label>
-                <textarea id="node-desc" rows="5"></textarea>
+                <textarea id="node-desc" rows="4"></textarea>
               </div>
               <div class="inspector-actions">
                 <button id="btn-save-node" class="primary">Guardar</button>

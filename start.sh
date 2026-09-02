@@ -41,13 +41,13 @@ fi
 # 2. Generar docker-compose-volumes.yml (override)
 cat << COMPOSE_OVERRIDE_EOF > "$VOLUMES_COMPOSE"
 services:
-  local_graphs:
+  context_graph:
     volumes:$(echo -e "$VOLUMES_LIST")
 COMPOSE_OVERRIDE_EOF
 
 echo "✅ 'docker-compose-volumes.yml' generado dinámicamente con inferencia automática de rutas."
 
 # 3. Levantar combinando el base y el archivo de volúmenes dinámico
-echo "🚀 Levantando local_graphs..."
+echo "🚀 Levantando context_graph..."
 docker compose -f "$BASE_COMPOSE" -f "$VOLUMES_COMPOSE" up -d --build
-echo "🌐 local_graphs listo en http://localhost:8899"
+echo "🌐 context_graph listo en http://localhost:8899"

@@ -19,6 +19,7 @@
   top: 16px;
   right: 16px;
   display: flex;
+  align-items: center;
   gap: 8px;
   z-index: 10;
   background: rgba(18, 24, 32, 0.85);
@@ -26,6 +27,18 @@
   padding: 6px;
   border-radius: 8px;
   border: 1px solid var(--border-color);
+}
+
+.graph-status-badge {
+  font-size: 12px;
+  font-weight: 600;
+  color: #94a3b8;
+  padding: 4px 10px;
+  background: rgba(15, 23, 42, 0.8);
+  border-radius: 6px;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  white-space: nowrap;
+  user-select: none;
 }
 
 .inspector-drawer {
