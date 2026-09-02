@@ -14,9 +14,9 @@ if (Test-Path $ConfigFile) {
 $Volumes = @()
 foreach ($p in $Projects) {
     if ($p.host_path) {
-        $folderName = Split-Path $p.host_path -Leaf
-        $cpath = "/sources/" + $folderName
-        $Volumes += "      - $($p.host_path):$($cpath):ro"
+        $pidClean = if ($p.id) { $p.id.ToLower() } else { (Split-Path $p.host_path -Leaf).ToLower() }
+        $cpath = if ($p.container_path) { $p.container_path } else { "/sources/" + $pidClean }
+        $Volumes += "      - '$($p.host_path):$($cpath):ro'"
     }
 }
 

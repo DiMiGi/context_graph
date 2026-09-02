@@ -27,22 +27,56 @@ class ProjectService:
         if not is_project_configured(project_id):
             return None
         configured = get_configured_projects()
-        target = next((p for p in configured if p.get("id") == project_id), None)
-        if target:
-            cpath = target.get("container_path")
-            if cpath and os.path.exists(cpath):
-                return cpath
+        target = next((p for p in configured if (p.get("id") or "").lower() == project_id.lower()), None)
+        
+        pid_clean = project_id.lower()
+        
+        # 1. Si está configurado container_path explícito
+        if target and target.get("container_path"):
+            cp = target.get("container_path")
+            if os.path.exists(cp):
+                return cp
+
+        # 2. Rutas estándar en contenedor usando project_id en minúsculas
+        candidate_paths = [
+            f"/sources/{pid_clean}",
+            f"/sources/{project_id}"
+        ]
+
+        # 3. Si tiene host_path, verificar nombre de carpeta original y en minúsculas dentro de /sources
+        if target and target.get("host_path"):
+            hp = target.get("host_path", "")
+            folder_name = os.path.basename(hp.rstrip("/\\"))
+            if folder_name:
+                candidate_paths.append(f"/sources/{folder_name.lower()}")
+                candidate_paths.append(f"/sources/{folder_name}")
+
+        for cp in candidate_paths:
+            if os.path.exists(cp):
+                return cp
+
+        # 4. Fallback: búsqueda case-insensitive dentro de /sources
+        if os.path.exists("/sources") and os.path.isdir("/sources"):
+            try:
+                for entry in os.listdir("/sources"):
+                    if entry.lower() == pid_clean:
+                        return os.path.join("/sources", entry)
+            except Exception:
+                pass
+
+        # 5. Fallback host_path directo (ej. si se ejecuta en host local sin Docker)
+        if target and target.get("host_path"):
             hpath = target.get("host_path")
-            if hpath and os.path.exists(hpath):
+            if os.path.exists(hpath):
                 return hpath
 
-        # Fallbacks estándar de contenedor
-        candidate_paths = [
-            f"/sources/{project_id}",
+        # 6. Fallback legado
+        candidate_fallbacks = [
+            f"/host_proyectos/{pid_clean}",
             f"/host_proyectos/{project_id}",
             os.path.abspath(os.path.join(DATA_PATH, "..", ".."))
         ]
-        for cp in candidate_paths:
+        for cp in candidate_fallbacks:
             if os.path.exists(cp):
                 return cp
         return None

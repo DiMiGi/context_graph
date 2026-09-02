@@ -8,6 +8,8 @@ class Node(BaseModel):
     path: Optional[str] = None
     description: Optional[str] = ""
     community: Optional[int] = 0
+    x: Optional[float] = None
+    y: Optional[float] = None
     origin: str = "auto"   # "auto" (creado por scanner/indexación) o "manual" / "ai" (creado/editado por IA o usuario)
     is_custom: bool = False # True si fue creado/modificado manualmente o por la IA
     metadata: Dict[str, Any] = Field(default_factory=dict)

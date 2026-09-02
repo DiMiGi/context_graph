@@ -37,13 +37,112 @@ class AddEdgeRequest(BaseModel):
     weight: Optional[float] = 1.0
     origin: Optional[str] = "manual"
 
+import networkx as nx
+
+def ensure_graph_layout(graph: GraphData, project_id: str):
+    if not graph or not graph.nodes:
+        return
+    if any(n.x is None or n.y is None for n in graph.nodes):
+        G = nx.Graph()
+        for n in graph.nodes:
+            G.add_node(n.id)
+        for e in graph.edges:
+            if e.source and e.target:
+                G.add_edge(e.source, e.target)
+
+        num_nodes = len(G.nodes)
+        try:
+            if num_nodes <= 10000:
+                pos = nx.spring_layout(G, seed=42, iterations=35, k=2.0 / (num_nodes ** 0.5 + 1e-5))
+            else:
+                try:
+                    pos = nx.spectral_layout(G, scale=1.0)
+                except Exception:
+                    pos = nx.spring_layout(G, seed=42, iterations=15)
+
+            for n in graph.nodes:
+                if n.id in pos and len(pos[n.id]) >= 2:
+                    coords = pos[n.id]
+                    n.x = round(float(coords[0]) * 1500.0, 2)
+                    n.y = round(float(coords[1]) * 1500.0, 2)
+
+            GraphStorage.save_graph(graph)
+        except Exception as e:
+            print(f"Error computing layout for {project_id}: {e}. Usando fallback radial...")
+            import math
+            for idx, n in enumerate(graph.nodes):
+                comm = n.community or 0
+                angle = idx * 2.399963229728653
+                r = math.sqrt(idx + 1) * 35.0
+                cx = (comm % 5 - 2) * 500.0
+                cy = (comm // 5 - 2) * 500.0
+                n.x = round(cx + r * math.cos(angle), 2)
+                n.y = round(cy + r * math.sin(angle), 2)
+            GraphStorage.save_graph(graph)
+
 @router.get("", response_model=GraphData)
 def get_graph(project_id: str):
     check_project_configured(project_id)
     graph = GraphService.get_graph(project_id)
     if not graph:
         raise HTTPException(status_code=404, detail="Graph not found")
+    ensure_graph_layout(graph, project_id)
     return graph
+
+@router.get("/geometry")
+def get_graph_geometry(project_id: str):
+    check_project_configured(project_id)
+    graph = GraphService.get_graph(project_id)
+    if not graph:
+        raise HTTPException(status_code=404, detail="Graph not found")
+    ensure_graph_layout(graph, project_id)
+
+    compact_nodes = [
+        {
+            "id": n.id,
+            "label": n.label or n.id,
+            "type": n.type,
+            "x": n.x,
+            "y": n.y,
+            "community": n.community or 0,
+            "is_custom": n.is_custom
+        }
+        for n in graph.nodes
+    ]
+
+    compact_edges = [
+        {
+            "source": e.source,
+            "target": e.target,
+            "relation": e.relation
+        }
+        for e in graph.edges
+    ]
+
+    return {
+        "project_id": graph.project_id,
+        "name": graph.name,
+        "nodes": compact_nodes,
+        "edges": compact_edges,
+        "metadata": {
+            "total_nodes": len(compact_nodes),
+            "total_edges": len(compact_edges),
+            "total_files": graph.metadata.get("total_files", 0),
+            "file_types": graph.metadata.get("file_types", {}),
+            "unregistered_files": graph.metadata.get("unregistered_files", {})
+        }
+    }
+
+@router.get("/nodes/{node_id:path}", response_model=Node)
+def get_node(project_id: str, node_id: str):
+    check_project_configured(project_id)
+    graph = GraphStorage.load_graph(project_id)
+    if not graph:
+        raise HTTPException(status_code=404, detail="Graph not found")
+    for n in graph.nodes:
+        if n.id == node_id:
+            return n
+    raise HTTPException(status_code=404, detail="Node not found")
 
 @router.get("/report")
 def get_report(project_id: str):

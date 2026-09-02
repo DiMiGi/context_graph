@@ -33,8 +33,8 @@ class GraphStorage:
                 continue
 
             host_path = cp.get("host_path", "")
-            folder_name = os.path.basename(host_path.rstrip("/\\")) if host_path else pid
-            inferred_container_path = cp.get("container_path", f"/sources/{folder_name}")
+            pid_clean = pid.lower()
+            inferred_container_path = cp.get("container_path", f"/sources/{pid_clean}")
 
             proj_dir = cls.get_project_dir(pid)
             graph_path = cls.get_graph_file(pid)

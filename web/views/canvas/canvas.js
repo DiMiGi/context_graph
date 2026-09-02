@@ -1,4 +1,4 @@
-// Módulo Canvas / ForceGraph con Carga Bajo Demanda y Viewport Culling
+// Módulo Canvas de Alto Rendimiento con Coordenadas Precalculadas y Cero Física en Navegador
 export const TYPE_COLORS = {
   "Schema": "#ec4899",
   "Class": "#8b5cf6",
@@ -12,27 +12,41 @@ export const TYPE_COLORS = {
 
 let graph = null;
 let selectedNode = null;
-let isSimulationPaused = false;
 let currentProjectId = "";
 
-// Almacén maestro de datos (Base de datos en memoria para el grafo activo)
+// Almacén maestro de datos en memoria
 let masterNodes = [];
 let masterEdges = [];
 let masterNodesMap = new Map();
-let adjacencyMap = new Map(); // nodeId -> Set of neighbor nodeIds
 
 // Conjunto filtrado activo
 let activeFilteredNodes = [];
 let activeFilteredEdges = [];
 
-// Configuración de culling / streaming
-const VIEWPORT_DELTA_RATIO = 0.35; // 35% de holgura de precarga alrededor del viewport
-let cullingDebounceTimer = null;
-let isInitialLayoutDone = false;
+export function isCanvasInitialized() {
+  return graph !== null;
+}
+
+export function pauseCanvas() {
+  if (graph) {
+    graph.pauseAnimation();
+  }
+}
+
+export function resumeCanvas() {
+  if (graph) {
+    graph.resumeAnimation();
+    resizeCanvas();
+  }
+}
 
 export function initCanvas(containerId, onNodeSelected, onNodeDeleted) {
+  if (graph) return graph;
+
   const container = document.getElementById(containerId);
-  if (!container) return;
+  if (!container) return null;
+
+  container.innerHTML = '';
 
   const width = container.clientWidth || window.innerWidth;
   const height = container.clientHeight || (window.innerHeight - 56);
@@ -42,86 +56,40 @@ export function initCanvas(containerId, onNodeSelected, onNodeDeleted) {
     .height(height)
     .backgroundColor('#0a0e14')
     .nodeId('id')
-    .nodeLabel(n => `${n.type}: ${n.label}\n${n.path || ''}`)
+    .nodeLabel(n => `${n.type}: ${n.label || n.id}\n${n.path || ''}`)
     .nodeColor(n => TYPE_COLORS[n.type] || '#00e5ff')
     .linkColor(() => '#38bdf8')
-    .linkWidth(1.8)
-    .linkDirectionalArrowLength(5)
+    .linkWidth(1.2)
+    .linkDirectionalArrowLength(4)
     .linkDirectionalArrowRelPos(0.95)
-    .linkCurvature(0.08)
-    .warmupTicks(120)
+    .linkCurvature(0.06)
+    .warmupTicks(0)
     .cooldownTicks(0)
-    .d3AlphaDecay(0.05)
-    .d3VelocityDecay(0.4)
-    .minZoom(0.02)
-    .maxZoom(16.0)
+    .d3AlphaDecay(1)
+    .d3VelocityDecay(1)
+    .minZoom(0.01)
+    .maxZoom(20.0)
     .enableNodeDrag(true)
-    .onNodeDrag((node, translate) => {
+    .onNodeDrag((node) => {
       node.fx = node.x;
       node.fy = node.y;
-      const master = masterNodesMap.get(node.id);
-      if (master) {
-        master.x = node.x;
-        master.y = node.y;
-        master.fx = node.x;
-        master.fy = node.y;
-      }
-    })
-    .onNodeDragEnd((node, translate) => {
-      node.fx = node.x;
-      node.fy = node.y;
-      const master = masterNodesMap.get(node.id);
-      if (master) {
-        master.x = node.x;
-        master.y = node.y;
-        master.fx = node.x;
-        master.fy = node.y;
-      }
-      scheduleViewportCulling(50);
     })
     .enableZoomInteraction(true)
     .enablePanInteraction(true)
     .onNodeClick(node => {
-      openInspector(node);
-      if (onNodeSelected) onNodeSelected(node);
+      if (node) {
+        selectedNode = node;
+        openInspector(node);
+        if (onNodeSelected) onNodeSelected(node);
+      }
     })
-    .onBackgroundClick(() => closeInspector())
-    .onZoom(() => scheduleViewportCulling(120))
-    .onZoomEnd(() => scheduleViewportCulling(0))
-    .onEngineTick(() => {
-      // Sincronizar coordenadas calculadas por d3 en tiempo real al mapa maestro
-      const rendered = graph?.graphData()?.nodes || [];
-      rendered.forEach(n => {
-        if (typeof n.x === 'number' && typeof n.y === 'number') {
-          const master = masterNodesMap.get(n.id);
-          if (master) {
-            master.x = n.x;
-            master.y = n.y;
-          }
-        }
-      });
-    })
-    .onEngineStop(() => {
-      // Al parar la física, sincronizar coordenadas finales
-      const rendered = graph?.graphData()?.nodes || [];
-      rendered.forEach(n => {
-        if (typeof n.x === 'number' && typeof n.y === 'number') {
-          const master = masterNodesMap.get(n.id);
-          if (master) {
-            master.x = n.x;
-            master.y = n.y;
-          }
-        }
-      });
-      isInitialLayoutDone = true;
-    })
-    .cooldownTicks(90);
+    .onBackgroundClick(() => closeInspector());
 
-  // Renderizado optimizado con LOD (Level of Detail)
+  // Renderizado optimizado con LOD (Level of Detail) para grafos masivos
   graph.nodeCanvasObject((node, ctx, globalScale) => {
     const label = node.label || node.id;
-    const baseRadius = node.type === "Schema" ? 7 : (node.type === "Class" ? 5.5 : (node.type === "Module" ? 4.5 : 3.5));
-    const radius = globalScale < 0.6 ? baseRadius * (0.4 + 0.6 * globalScale) : baseRadius;
+    const baseRadius = node.type === "Schema" ? 7 : (node.type === "Class" ? 5 : (node.type === "Module" ? 4 : 3));
+    const radius = globalScale < 0.5 ? baseRadius * (0.3 + 0.7 * globalScale) : baseRadius;
 
     ctx.beginPath();
     ctx.arc(node.x, node.y, radius, 0, 2 * Math.PI, false);
@@ -131,7 +99,8 @@ export function initCanvas(containerId, onNodeSelected, onNodeDeleted) {
     ctx.strokeStyle = node === selectedNode ? '#ffffff' : (node.is_custom ? '#f59e0b' : '#0f172a');
     ctx.stroke();
 
-    if (globalScale > 0.9 || node === selectedNode) {
+    // Mostrar etiquetas sólo si hay suficiente zoom o está seleccionado
+    if (globalScale > 0.85 || node === selectedNode) {
       const fontSize = Math.max(10 / globalScale, 2.5);
       ctx.font = `${fontSize}px Inter, sans-serif`;
       ctx.textAlign = 'center';
@@ -142,39 +111,16 @@ export function initCanvas(containerId, onNodeSelected, onNodeDeleted) {
   });
 
   graph.nodePointerAreaPaint((node, color, ctx) => {
-    const baseRadius = (node.type === "Schema" ? 7 : (node.type === "Class" ? 5.5 : (node.type === "Module" ? 4.5 : 3.5))) + 3;
+    const baseRadius = (node.type === "Schema" ? 7 : (node.type === "Class" ? 5 : 3.5)) + 4;
     ctx.fillStyle = color;
     ctx.beginPath();
     ctx.arc(node.x, node.y, baseRadius, 0, 2 * Math.PI, false);
     ctx.fill();
   });
 
-  // Controles overlay
+  // Botón Centrar Vista
   document.getElementById('btn-fit')?.addEventListener('click', () => {
-    // Si hay culling, cargamos momentáneamente todos para ajustar y luego re-enfocamos
-    if (activeFilteredNodes.length > 0) {
-      renderActiveData(activeFilteredNodes, activeFilteredEdges);
-      setTimeout(() => {
-        graph?.zoomToFit(400, 40);
-        setTimeout(() => scheduleViewportCulling(50), 450);
-      }, 50);
-    }
-  });
-
-  document.getElementById('btn-pause-sim')?.addEventListener('click', () => {
-    isSimulationPaused = !isSimulationPaused;
-    const currentNodes = graph?.graphData()?.nodes || [];
-    const btn = document.getElementById('btn-pause-sim');
-    if (isSimulationPaused) {
-      currentNodes.forEach(n => { n.fx = n.x; n.fy = n.y; });
-      graph.cooldownTicks(0);
-      if (btn) btn.textContent = '▶️ Reanudar';
-    } else {
-      currentNodes.forEach(n => { n.fx = undefined; n.fy = undefined; });
-      graph.cooldownTicks(90);
-      graph.d3ReheatSimulation();
-      if (btn) btn.textContent = '⏸️ Pausar';
-    }
+    graph?.zoomToFit(400, 40);
   });
 
   document.getElementById('btn-close-inspector')?.addEventListener('click', closeInspector);
@@ -219,10 +165,10 @@ export function initCanvas(containerId, onNodeSelected, onNodeDeleted) {
         closeInspector();
         masterNodes = masterNodes.filter(n => n.id !== deletedId);
         masterEdges = masterEdges.filter(e => e.source !== deletedId && e.target !== deletedId);
-        rebuildMasterIndices();
+        masterNodesMap.delete(deletedId);
         activeFilteredNodes = activeFilteredNodes.filter(n => n.id !== deletedId);
         activeFilteredEdges = activeFilteredEdges.filter(e => e.source !== deletedId && e.target !== deletedId);
-        updateVisibleNodes();
+        renderGraphData();
         if (onNodeDeleted) onNodeDeleted(deletedId);
       }
     } catch (e) {
@@ -233,6 +179,10 @@ export function initCanvas(containerId, onNodeSelected, onNodeDeleted) {
   window.addEventListener('resize', () => {
     resizeCanvas();
   });
+
+  if (masterNodes.length > 0) {
+    renderGraphData();
+  }
 
   return graph;
 }
@@ -246,58 +196,43 @@ export function resizeCanvas() {
     if (w > 0 && h > 0) {
       graph.width(w);
       graph.height(h);
-      scheduleViewportCulling(100);
     }
   }
-}
-
-// Reconstruye mapas y lista de adyacencias
-function rebuildMasterIndices() {
-  masterNodesMap.clear();
-  adjacencyMap.clear();
-
-  masterNodes.forEach(node => {
-    masterNodesMap.set(node.id, node);
-    adjacencyMap.set(node.id, new Set());
-  });
-
-  // Limpiar aristas huérfanas
-  masterEdges = masterEdges.filter(edge => {
-    const src = typeof edge.source === 'object' ? edge.source.id : edge.source;
-    const tgt = typeof edge.target === 'object' ? edge.target.id : edge.target;
-    return masterNodesMap.has(src) && masterNodesMap.has(tgt);
-  });
-
-  masterEdges.forEach(edge => {
-    const src = typeof edge.source === 'object' ? edge.source.id : edge.source;
-    const tgt = typeof edge.target === 'object' ? edge.target.id : edge.target;
-    adjacencyMap.get(src)?.add(tgt);
-    adjacencyMap.get(tgt)?.add(src);
-  });
 }
 
 // Carga inicial del proyecto en el almacén maestro
 export function setGraphData(projectId, nodes, edges) {
   currentProjectId = projectId;
-  if (!graph) return;
 
-  masterNodes = (nodes || []).map(n => ({ ...n }));
+  masterNodes = (nodes || []).map(n => ({
+    ...n,
+    fx: typeof n.x === 'number' ? n.x : undefined,
+    fy: typeof n.y === 'number' ? n.y : undefined
+  }));
   masterEdges = (edges || []).map(e => ({ ...e }));
-  rebuildMasterIndices();
+
+  masterNodesMap.clear();
+  masterNodes.forEach(n => masterNodesMap.set(n.id, n));
 
   activeFilteredNodes = [...masterNodes];
   activeFilteredEdges = [...masterEdges];
-  isInitialLayoutDone = false;
 
   updateStatusBadge(activeFilteredNodes.length, masterNodes.length);
 
-  // Render inicial: siempre renderizar todos los nodos activos con enlaces válidos
-  const nodeIdsSet = new Set(activeFilteredNodes.map(n => n.id));
-  const links = activeFilteredEdges
+  if (!graph) return;
+
+  renderGraphData();
+}
+
+function renderGraphData() {
+  if (!graph) return;
+
+  const nodeIds = new Set(activeFilteredNodes.map(n => n.id));
+  const validEdges = activeFilteredEdges
     .filter(e => {
       const src = typeof e.source === 'object' ? e.source.id : e.source;
       const tgt = typeof e.target === 'object' ? e.target.id : e.target;
-      return nodeIdsSet.has(src) && nodeIdsSet.has(tgt);
+      return nodeIds.has(src) && nodeIds.has(tgt);
     })
     .map(e => ({
       source: typeof e.source === 'object' ? e.source.id : e.source,
@@ -305,141 +240,15 @@ export function setGraphData(projectId, nodes, edges) {
       relation: e.relation
     }));
 
-  graph.graphData({ nodes: [...activeFilteredNodes], links });
-
-  // Sincronizar de inmediato las coordenadas calculadas por el warmup
-  const initialNodes = graph.graphData().nodes || [];
-  initialNodes.forEach(n => {
-    const master = masterNodesMap.get(n.id);
-    if (master && typeof n.x === 'number' && typeof n.y === 'number') {
-      master.x = n.x;
-      master.y = n.y;
-    }
-  });
-  isInitialLayoutDone = true;
+  graph.graphData({ nodes: activeFilteredNodes, links: validEdges });
 
   setTimeout(() => {
     graph.zoomToFit(400, 40);
   }, 100);
+
+  updateStatusBadge(activeFilteredNodes.length, masterNodes.length);
 }
 
-// Programador de Culling con debounce
-function scheduleViewportCulling(delayMs = 80) {
-  if (cullingDebounceTimer) clearTimeout(cullingDebounceTimer);
-  cullingDebounceTimer = setTimeout(() => {
-    updateVisibleNodes();
-  }, delayMs);
-}
-
-// Determina los nodos dentro del Viewport + Delta y sus adyacentes inmediatos
-function updateVisibleNodes() {
-  if (!graph || !masterNodes.length) return;
-
-  // Si el grafo es pequeño (< 200 nodos), renderizamos todo sin culling para fluidez óptima
-  if (activeFilteredNodes.length <= 200) {
-    renderActiveData(activeFilteredNodes, activeFilteredEdges);
-    updateStatusBadge(activeFilteredNodes.length, masterNodes.length);
-    return;
-  }
-
-  // Obtener dimensiones del canvas y calcular Bounding Box en coordenadas del grafo
-  const width = graph.width();
-  const height = graph.height();
-  const zoom = graph.zoom() || 1.0;
-  const center = graph.centerAt() || { x: 0, y: 0 };
-
-  const halfViewWidth = (width / 2) / zoom;
-  const halfViewHeight = (height / 2) / zoom;
-
-  const deltaX = halfViewWidth * VIEWPORT_DELTA_RATIO;
-  const deltaY = halfViewHeight * VIEWPORT_DELTA_RATIO;
-
-  const xMin = center.x - halfViewWidth - deltaX;
-  const xMax = center.x + halfViewWidth + deltaX;
-  const yMin = center.y - halfViewHeight - deltaY;
-  const yMax = center.y + halfViewHeight + deltaY;
-
-  const visibleNodeIds = new Set();
-
-  // 1. Identificar nodos dentro de la caja [Viewport + Delta]
-  activeFilteredNodes.forEach(node => {
-    const master = masterNodesMap.get(node.id);
-    const nx = (master && typeof master.x === 'number') ? master.x : node.x;
-    const ny = (master && typeof master.y === 'number') ? master.y : node.y;
-
-    if (typeof nx === 'number' && typeof ny === 'number') {
-      if (nx >= xMin && nx <= xMax && ny >= yMin && ny <= yMax) {
-        visibleNodeIds.add(node.id);
-      }
-    }
-  });
-
-  // Si el zoom es muy general o no se encontraron nodos en el corte, renderizar todo el conjunto activo
-  if (visibleNodeIds.size === 0) {
-    activeFilteredNodes.forEach(n => visibleNodeIds.add(n.id));
-  }
-
-  // 2. Streaming de Nodos Adyacentes (Vecindad 1-Hop)
-  const expandedNodeIds = new Set(visibleNodeIds);
-  visibleNodeIds.forEach(nodeId => {
-    const neighbors = adjacencyMap.get(nodeId);
-    if (neighbors) {
-      neighbors.forEach(neighborId => {
-        // Solo agregar si el vecino forma parte del filtro activo
-        if (masterNodesMap.has(neighborId)) {
-          expandedNodeIds.add(neighborId);
-        }
-      });
-    }
-  });
-
-  // 3. Filtrar nodos y aristas a renderizar
-  const nodesToRender = activeFilteredNodes.filter(n => expandedNodeIds.has(n.id));
-  const activeIdsSet = new Set(nodesToRender.map(n => n.id));
-
-  const edgesToRender = activeFilteredEdges.filter(e => {
-    const src = typeof e.source === 'object' ? e.source.id : e.source;
-    const tgt = typeof e.target === 'object' ? e.target.id : e.target;
-    return activeIdsSet.has(src) && activeIdsSet.has(tgt);
-  });
-
-  // Actualizar dataset del canvas sin reiniciar física de posiciones fijas
-  renderActiveData(nodesToRender, edgesToRender);
-  updateStatusBadge(nodesToRender.length, masterNodes.length);
-}
-
-// Renderiza los datos manteniendo la identidad de objeto y coordenadas 100% estáticas (fijas)
-function renderActiveData(nodes, edges) {
-  if (!graph) return;
-
-  const nodeMap = new Map();
-  const preparedNodes = nodes.map(n => {
-    const master = masterNodesMap.get(n.id) || n;
-    // Congelar coordenadas espaciales absolutas para evitar que d3 force los empuje o reanime
-    if (typeof master.x === 'number' && typeof master.y === 'number') {
-      master.fx = master.x;
-      master.fy = master.y;
-    }
-    nodeMap.set(master.id, master);
-    return master;
-  });
-
-  const links = edges
-    .filter(e => {
-      const src = typeof e.source === 'object' ? e.source.id : e.source;
-      const tgt = typeof e.target === 'object' ? e.target.id : e.target;
-      return nodeMap.has(src) && nodeMap.has(tgt);
-    })
-    .map(e => ({
-      source: typeof e.source === 'object' ? e.source.id : e.source,
-      target: typeof e.target === 'object' ? e.target.id : e.target,
-      relation: e.relation
-    }));
-
-  graph.graphData({ nodes: preparedNodes, links });
-}
-
-// Actualiza el contador de nodos en la vista
 function updateStatusBadge(visibleCount, totalCount) {
   const visibleEl = document.getElementById('visible-nodes-count');
   const totalEl = document.getElementById('total-nodes-count');
@@ -448,7 +257,7 @@ function updateStatusBadge(visibleCount, totalCount) {
 }
 
 export function filterGraph(type, searchQuery, rawNodes, rawEdges) {
-  if (!graph || !rawNodes) return;
+  if (!rawNodes) return;
   const q = (searchQuery || "").toLowerCase().trim();
 
   let filtered = rawNodes;
@@ -464,7 +273,7 @@ export function filterGraph(type, searchQuery, rawNodes, rawEdges) {
   }
 
   const nodeIds = new Set(filtered.map(n => n.id));
-  const filteredLinks = rawEdges.filter(e => {
+  const filteredLinks = (rawEdges || []).filter(e => {
     const src = typeof e.source === 'object' ? e.source.id : e.source;
     const tgt = typeof e.target === 'object' ? e.target.id : e.target;
     return nodeIds.has(src) && nodeIds.has(tgt);
@@ -473,10 +282,12 @@ export function filterGraph(type, searchQuery, rawNodes, rawEdges) {
   activeFilteredNodes = [...filtered];
   activeFilteredEdges = [...filteredLinks];
 
-  updateVisibleNodes();
+  if (graph) {
+    renderGraphData();
+  }
 }
 
-export function openInspector(node) {
+export async function openInspector(node) {
   selectedNode = node;
   const drawer = document.getElementById('inspector-drawer');
   if (!drawer) return;
@@ -485,49 +296,63 @@ export function openInspector(node) {
   document.getElementById('node-label').value = node.label || '';
   document.getElementById('node-type').value = node.type || 'Concept';
   document.getElementById('node-path').value = node.path || '';
-  document.getElementById('node-desc').value = node.description || '';
-
-  const metaBox = document.getElementById('node-meta-container');
-  const metaGroup = document.getElementById('node-meta-group');
-  if (metaBox && metaGroup) {
-    const meta = node.metadata || {};
-    const lines = [];
-
-    if (meta.start_line) {
-      lines.push(`📍 Líneas: L${meta.start_line}${meta.end_line && meta.end_line !== meta.start_line ? ` - L${meta.end_line}` : ''}`);
-    }
-    if (meta.signature) {
-      lines.push(`📝 Firma:\n${meta.signature}`);
-    }
-    if (meta.visibility) {
-      lines.push(`🔒 Visibilidad: ${meta.visibility}`);
-    }
-    if (meta.bases && meta.bases.length) {
-      lines.push(`🧬 Herencia: ${meta.bases.join(', ')}`);
-    }
-    if (meta.implements && meta.implements.length) {
-      lines.push(`🔌 Implementa: ${meta.implements.join(', ')}`);
-    }
-    if (meta.columns && meta.columns.length) {
-      lines.push(`📊 Columnas: ${meta.columns.join(', ')}`);
-    }
-    if (meta.docstring) {
-      lines.push(`📖 Doc:\n${meta.docstring}`);
-    }
-
-    if (lines.length > 0) {
-      metaBox.textContent = lines.join('\n\n');
-      metaGroup.style.display = 'block';
-    } else {
-      metaBox.textContent = 'Sin metadata estructural capturada.';
-      metaGroup.style.display = 'block';
-    }
-  }
+  document.getElementById('node-desc').value = node.description || 'Cargando detalles...';
 
   drawer.classList.remove('hidden');
+
+  // Carga asíncrona bajo demanda de metadata detallada del nodo
+  if (currentProjectId && node.id) {
+    try {
+      const res = await fetch(`/api/projects/${currentProjectId}/graph/nodes/${encodeURIComponent(node.id)}`);
+      if (res.ok) {
+        const fullNode = await res.json();
+        Object.assign(node, fullNode);
+
+        document.getElementById('node-path').value = fullNode.path || '';
+        document.getElementById('node-desc').value = fullNode.description || '';
+
+        const metaBox = document.getElementById('node-meta-container');
+        const metaGroup = document.getElementById('node-meta-group');
+        if (metaBox && metaGroup) {
+          const meta = fullNode.metadata || {};
+          const lines = [];
+
+          if (meta.start_line) {
+            lines.push(`📍 Líneas: L${meta.start_line}${meta.end_line && meta.end_line !== meta.start_line ? ` - L${meta.end_line}` : ''}`);
+          }
+          if (meta.signature) {
+            lines.push(`📝 Firma:\n${meta.signature}`);
+          }
+          if (meta.visibility) {
+            lines.push(`🔒 Visibilidad: ${meta.visibility}`);
+          }
+          if (meta.bases && meta.bases.length) {
+            lines.push(`🧬 Herencia: ${meta.bases.join(', ')}`);
+          }
+          if (meta.implements && meta.implements.length) {
+            lines.push(`🔌 Implementa: ${meta.implements.join(', ')}`);
+          }
+          if (meta.columns && meta.columns.length) {
+            lines.push(`📊 Columnas: ${meta.columns.join(', ')}`);
+          }
+
+          if (lines.length > 0) {
+            metaBox.textContent = lines.join('\n\n');
+            metaGroup.style.display = 'block';
+          } else {
+            metaBox.textContent = 'Sin metadata adicional.';
+            metaGroup.style.display = 'block';
+          }
+        }
+      }
+    } catch (e) {
+      console.warn('No se pudo cargar metadata extendida del nodo:', e);
+    }
+  }
 }
 
 export function closeInspector() {
   selectedNode = null;
   document.getElementById('inspector-drawer')?.classList.add('hidden');
 }
+

@@ -88,7 +88,7 @@ class IngestionEngine:
                 file_node_type = "Asset"
             elif ext in (".md", ".mdx", ".txt", ".mmd", ".mermaid"):
                 file_node_type = "Document"
-            elif ext in (".json", ".yml", ".yaml", ".xml", ".conf"):
+            elif ext in (".json", ".yml", ".yaml", ".xml", ".sbc", ".conf"):
                 file_node_type = "Config"
             elif ext in (".css", ".scss", ".sass", ".less"):
                 file_node_type = "Style"
@@ -144,6 +144,25 @@ class IngestionEngine:
                         nodes_dict[nid].community = comm_id
         except Exception:
             pass
+
+        # 3.1 Cálculo de Layout Espacial 2D Determinista para WebGL
+        try:
+            num_nodes = len(G.nodes)
+            if num_nodes > 0:
+                if num_nodes <= 10000:
+                    pos = nx.spring_layout(G, seed=42, iterations=35, k=2.0 / (num_nodes ** 0.5 + 1e-5))
+                else:
+                    try:
+                        pos = nx.spectral_layout(G, scale=1.0)
+                    except Exception:
+                        pos = nx.spring_layout(G, seed=42, iterations=15)
+
+                for nid, coords in pos.items():
+                    if nid in nodes_dict and len(coords) >= 2:
+                        nodes_dict[nid].x = round(float(coords[0]) * 1500.0, 2)
+                        nodes_dict[nid].y = round(float(coords[1]) * 1500.0, 2)
+        except Exception as e:
+            print(f"Error computing 2D layout coordinates: {e}")
 
         god_nodes = sorted(G.degree, key=lambda x: x[1], reverse=True)[:10]
 

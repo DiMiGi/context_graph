@@ -39,10 +39,31 @@ if os.path.exists(web_dir):
         if os.path.exists(fpath):
             app.mount(f"/{folder}", StaticFiles(directory=fpath), name=folder)
 
-    @app.get("/")
-    async def get_index():
-        index_file = os.path.join(web_dir, "index.html")
-        return FileResponse(index_file)
+    frontend_routes = [
+        "/",
+        "/graphs",
+        "/graphs/{project_id:path}",
+        "/summary",
+        "/summary/{project_id:path}",
+        "/report",
+        "/report/{project_id:path}",
+        "/unregistered",
+        "/unregistered/{project_id:path}",
+        "/tasks",
+        "/tasks/{project_id:path}",
+    ]
+    for route_path in frontend_routes:
+        @app.get(route_path, include_in_schema=False)
+        async def serve_frontend(request: Request):
+            index_file = os.path.join(web_dir, "index.html")
+            return FileResponse(
+                index_file,
+                headers={
+                    "Cache-Control": "no-cache, no-store, must-revalidate",
+                    "Pragma": "no-cache",
+                    "Expires": "0"
+                }
+            )
 
 import contextlib
 

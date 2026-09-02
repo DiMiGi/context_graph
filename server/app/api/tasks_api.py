@@ -8,6 +8,7 @@ from pydantic import BaseModel
 from app.graph.storage import GraphStorage
 from app.config import get_configured_projects, is_project_configured
 from app.ingestion.engine import IngestionEngine
+from app.services.project_service import ProjectService
 
 router = APIRouter(prefix="/api/tasks", tags=["tasks"])
 
@@ -24,21 +25,10 @@ def _run_reindex_task(task_id: str, project_id: str, mode: str, target_paths: Op
         TASKS_STORE[task_id]["started_at"] = time.time()
         
         configured = get_configured_projects()
-        target_config = next((cp for cp in configured if cp.get("id") == project_id), None)
+        target_config = next((cp for cp in configured if (cp.get("id") or "").lower() == project_id.lower()), None)
         
-        source_path = None
-        proj_name = None
-        if target_config:
-            host_path = target_config.get("host_path", "")
-            folder_name = os.path.basename(host_path.rstrip("/\\")) if host_path else project_id
-            source_path = target_config.get("container_path", f"/sources/{folder_name}")
-            proj_name = target_config.get("name")
-        
-        if not source_path or not os.path.exists(source_path):
-            for fb in [f"/sources/{project_id}", f"/host_proyectos/{project_id}"]:
-                if os.path.exists(fb):
-                    source_path = fb
-                    break
+        source_path = ProjectService.get_source_path(project_id)
+        proj_name = target_config.get("name") if target_config else project_id
 
         if not source_path or not os.path.exists(source_path):
             TASKS_STORE[task_id]["status"] = "failed"

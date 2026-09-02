@@ -35,6 +35,7 @@ PARSERS_MAP = {
     ".yml": ConfigParser(),
     ".yaml": ConfigParser(),
     ".xml": ConfigParser(),
+    ".sbc": ConfigParser(),
     ".conf": ConfigParser(),
     # Docs & Diagrams
     ".md": DocParser(),
