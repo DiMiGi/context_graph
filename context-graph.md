@@ -1,5 +1,7 @@
 ---
 trigger: always_on
+glob:
+description:
 ---
 
 # 🌐 CONFIGURACIÓN DE CONTEXT GRAPH (Variables del Proyecto / Workspace)
