@@ -1,3 +1,7 @@
+---
+trigger: always_on
+---
+
 # 🌐 REGLA DEL PROYECTO: `context_graph`
 
 Este repositorio contiene el código fuente de **`context_graph`**: un gestor, indexador incremental AST y visor interactivo de grafos de conocimiento de código multi-proyecto, que expone un servidor **FastMCP** (SSE) para asistir a agentes de IA (Antigravity, Claude, etc.) optimizando drásticamente el consumo de tokens.
@@ -75,12 +79,15 @@ context_graph/
 
 ## 🧰 Herramientas MCP Expuestas por `context_graph`
 
-| Herramienta MCP | Propósito |
-| :--- | :--- |
-| `list_projects()` | Lista proyectos autorizados en `projects_config.json`. |
-| `get_project_summary(project_id)` | Devuelve `GRAPH_REPORT.md` con estadísticas y resumen arquitectónico. |
-| `query_graph_nodes(project_id, query, node_type)` | Búsqueda rápida de nodos con metadata de líneas y firmas. |
-| `get_node_connections(project_id, node_id)` | Devuelve dependencias entrantes y salientes de un nodo. |
-| `update_node_context(project_id, node_id, description)` | Enriquece con notas técnicas persistentes un nodo (`origin="ai"`). |
-| `add_custom_connection(project_id, source, target, relation)` | Crea enlaces relacionales persistentes entre nodos. |
-| `reindex_modified_files(project_id, file_paths)` | Reindexa parcialmente archivos específicos tras una edición. |
+| Herramienta MCP | Firma / Parámetros | Propósito |
+| :--- | :--- | :--- |
+| `list_projects()` | `()` | Lista proyectos autorizados en `projects_config.json`. |
+| `get_project_summary()` | `(project_id)` | Devuelve `GRAPH_REPORT.md` con estadísticas y resumen arquitectónico. |
+| `query_graph_nodes()` | `(project_id, query, node_type)` | Búsqueda rápida de nodos con metadata de líneas y firmas. |
+| `get_node_connections()` | `(project_id, node_id)` | Devuelve dependencias entrantes y salientes de un nodo. |
+| `get_impact_analysis()` | `(project_id, node_id, max_depth=2, output_format="markdown")` | **Blast Radius:** Análisis de dependencias transitivas con clasificación de riesgo (Crítico, Alto, Medio). |
+| `get_code_slice()` | `(project_id, node_id, context_lines=0)` | **Extracción de Código:** Devuelve el fragmento de código exacto del nodo según sus líneas AST sin leer archivos manuales. |
+| `get_subgraph()` | `(project_id, focal_node_id, depth=1, output_format="markdown")` | **Subgrafo Contextual:** Exporta el vecindario de $N$-saltos de un nodo para alimentar prompts de tareas específicas. |
+| `update_node_context()` | `(project_id, node_id, description)` | Enriquece con notas técnicas persistentes un nodo (`origin="ai"`). |
+| `add_custom_connection()` | `(project_id, source, target, relation)` | Crea enlaces relacionales persistentes entre nodos. |
+| `reindex_modified_files()` | `(project_id, file_paths)` | Reindexa parcialmente archivos específicos tras una edición. |

@@ -2,9 +2,10 @@ from fastapi import APIRouter, HTTPException, Header
 from typing import List, Dict, Any, Optional
 from pydantic import BaseModel
 import os
+from app.services.project_service import ProjectService
 from app.graph.storage import GraphStorage
 from app.graph.model import GraphData
-from app.config import get_configured_projects, is_project_configured
+from app.config import get_configured_projects
 from app.ingestion.engine import IngestionEngine
 
 router = APIRouter(prefix="/api/projects", tags=["projects"])
@@ -19,7 +20,7 @@ class ReindexRequest(BaseModel):
 
 @router.get("", response_model=List[Dict[str, Any]])
 def list_projects():
-    return GraphStorage.list_projects()
+    return ProjectService.list_projects()
 
 @router.post("", response_model=GraphData)
 def create_project(req: CreateProjectRequest):
@@ -39,7 +40,7 @@ def reindex_project(
     - Modo 'partial': Purga y re-parsea solo los archivos indicados en target_paths.
     - Modo 'rebuild': Purga total (solo permitido si viene explícitamente desde la Web UI).
     """
-    if not is_project_configured(project_id):
+    if not ProjectService.is_configured(project_id):
         raise HTTPException(
             status_code=404,
             detail=f"El proyecto '{project_id}' no está configurado o habilitado en projects_config.json."
@@ -55,34 +56,16 @@ def reindex_project(
             detail="La purga completa (rebuild) solo está permitida desde la interfaz web con confirmación del usuario."
         )
 
-    configured = get_configured_projects()
-    target_config = next((cp for cp in configured if cp.get("id") == project_id), None)
-
-    source_path = None
-    proj_name = None
-
-    if target_config:
-        host_path = target_config.get("host_path", "")
-        folder_name = os.path.basename(host_path.rstrip("/\\")) if host_path else project_id
-        source_path = target_config.get("container_path", f"/sources/{folder_name}")
-        proj_name = target_config.get("name")
-
-    if not source_path or not os.path.exists(source_path):
-        # Fallbacks automáticos
-        fallbacks = [
-            f"/sources/{project_id}",
-            f"/host_proyectos/{project_id}"
-        ]
-        for fb in fallbacks:
-            if os.path.exists(fb):
-                source_path = fb
-                break
-
+    source_path = ProjectService.get_source_path(project_id)
     if not source_path or not os.path.exists(source_path):
         raise HTTPException(
             status_code=404,
-            detail=f"No se encontró la ruta del proyecto '{project_id}' en {source_path}. Verifica que la carpeta exista en tu máquina y ejecuta ./start.sh."
+            detail=f"No se encontró la ruta del proyecto '{project_id}'. Verifica que la carpeta exista en tu máquina y ejecuta ./start.sh o ./start.ps1."
         )
+
+    configured = get_configured_projects()
+    target_config = next((cp for cp in configured if cp.get("id") == project_id), None)
+    proj_name = target_config.get("name") if target_config else project_id
 
     try:
         graph = IngestionEngine.index_directory(

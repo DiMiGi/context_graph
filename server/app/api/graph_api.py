@@ -1,14 +1,15 @@
 from fastapi import APIRouter, HTTPException
 from typing import Optional, Dict, Any
 from pydantic import BaseModel
+from app.services.project_service import ProjectService
+from app.services.graph_service import GraphService
 from app.graph.storage import GraphStorage
 from app.graph.model import GraphData, Node, Edge
-from app.config import is_project_configured
 
 router = APIRouter(prefix="/api/projects/{project_id}/graph", tags=["graph"])
 
 def check_project_configured(project_id: str):
-    if not is_project_configured(project_id):
+    if not ProjectService.is_configured(project_id):
         raise HTTPException(status_code=404, detail=f"Project '{project_id}' is not configured or enabled")
 
 class AddNodeRequest(BaseModel):
@@ -39,7 +40,7 @@ class AddEdgeRequest(BaseModel):
 @router.get("", response_model=GraphData)
 def get_graph(project_id: str):
     check_project_configured(project_id)
-    graph = GraphStorage.load_graph(project_id)
+    graph = GraphService.get_graph(project_id)
     if not graph:
         raise HTTPException(status_code=404, detail="Graph not found")
     return graph
@@ -47,7 +48,7 @@ def get_graph(project_id: str):
 @router.get("/report")
 def get_report(project_id: str):
     check_project_configured(project_id)
-    report = GraphStorage.load_report(project_id)
+    report = ProjectService.get_summary(project_id)
     return {"report": report}
 
 @router.post("/nodes", response_model=Node)

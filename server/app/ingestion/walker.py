@@ -21,7 +21,7 @@ class DirectoryWalker:
         def file_generator():
             for root, dirs, files in os.walk(root_path, topdown=True):
                 # Prune excluded dirs
-                dirs[:] = [d for d in dirs if d not in EXCLUDE_DIRS and not d.startswith(".")]
+                dirs[:] = [d for d in dirs if d not in EXCLUDE_DIRS and d != "data" and not d.startswith(".")]
 
                 for file in files:
                     ext = os.path.splitext(file)[1].lower()
