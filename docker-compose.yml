@@ -19,3 +19,7 @@ services:
       - DATA_PATH=/data/projects
       - PORT=${PORT:-8899}
       - HOST=0.0.0.0
+      - OMP_NUM_THREADS=1
+      - OPENBLAS_NUM_THREADS=1
+      - MKL_NUM_THREADS=1
+      - OMP_WAIT_POLICY=PASSIVE
