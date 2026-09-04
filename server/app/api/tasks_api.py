@@ -16,10 +16,11 @@ router = APIRouter(prefix="/api/tasks", tags=["tasks"])
 TASKS_STORE: Dict[str, Dict[str, Any]] = {}
 
 class ReindexTaskRequest(BaseModel):
-    mode: str = "incremental"  # "incremental", "partial", "rebuild"
+    mode: str = "incremental"  # "incremental", "partial", "rebuild", "git_diff"
     target_paths: Optional[List[str]] = None
+    branch: Optional[str] = None
 
-def _run_reindex_task(task_id: str, project_id: str, mode: str, target_paths: Optional[List[str]]):
+def _run_reindex_task(task_id: str, project_id: str, mode: str, target_paths: Optional[List[str]], branch: Optional[str]):
     try:
         TASKS_STORE[task_id]["status"] = "running"
         TASKS_STORE[task_id]["started_at"] = time.time()
@@ -40,13 +41,19 @@ def _run_reindex_task(task_id: str, project_id: str, mode: str, target_paths: Op
             source_directory=source_path,
             project_name=proj_name,
             mode=mode,
-            target_paths=target_paths
+            target_paths=target_paths,
+            branch=branch
         )
 
+        effective_branch = graph.metadata.get("branch", branch or "main")
+        TASKS_STORE[task_id]["branch"] = effective_branch
         TASKS_STORE[task_id]["status"] = "completed"
         TASKS_STORE[task_id]["completed_at"] = time.time()
         TASKS_STORE[task_id]["result"] = {
             "project_id": project_id,
+            "branch": effective_branch,
+            "commit_hash": graph.metadata.get("commit_hash", ""),
+            "commit_short": graph.metadata.get("commit_short", ""),
             "mode": mode,
             "nodes_count": len(graph.nodes),
             "edges_count": len(graph.edges),
@@ -73,6 +80,7 @@ def start_reindex_task(
 
     mode = req.mode if req else "incremental"
     target_paths = req.target_paths if req else None
+    branch = req.branch if req else None
 
     if mode == "rebuild" and x_requested_by != "web_ui":
         raise HTTPException(
@@ -85,6 +93,7 @@ def start_reindex_task(
         "id": task_id,
         "type": "reindex",
         "project_id": project_id,
+        "branch": branch,
         "mode": mode,
         "target_paths": target_paths,
         "status": "queued",
@@ -97,7 +106,7 @@ def start_reindex_task(
 
     thread = threading.Thread(
         target=_run_reindex_task,
-        args=(task_id, project_id, mode, target_paths),
+        args=(task_id, project_id, mode, target_paths, branch),
         daemon=True
     )
     thread.start()
@@ -105,6 +114,7 @@ def start_reindex_task(
     return {
         "task_id": task_id,
         "status": "queued",
+        "branch": branch,
         "message": f"Tarea de indexación ({mode}) encolada para '{project_id}'."
     }
 

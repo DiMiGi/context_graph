@@ -24,7 +24,7 @@ class CodeService:
     }
 
     @classmethod
-    def get_code_slice(cls, project_id: str, node_id: str, context_lines: int = 0) -> str:
+    def get_code_slice(cls, project_id: str, node_id: str, context_lines: int = 0, branch: Optional[str] = None) -> str:
         """
         Extrae el fragmento exacto de código fuente correspondiente al nodo
         usando los metadatos de AST (start_line, end_line) directamente desde disco.
@@ -32,9 +32,10 @@ class CodeService:
         if not ProjectService.is_configured(project_id):
             return f"Error: Project '{project_id}' is not configured or enabled in projects_config.json."
 
-        graph = GraphStorage.load_graph(project_id)
+        effective_branch = branch or ProjectService.get_active_branch(project_id)
+        graph = GraphStorage.load_graph(project_id, branch=effective_branch)
         if not graph:
-            return f"Project '{project_id}' not found."
+            return f"Project '{project_id}' not found (branch: {effective_branch})."
 
         node = next((n for n in graph.nodes if n.id == node_id), None)
         if not node:
@@ -87,7 +88,7 @@ class CodeService:
         lang = cls.LANG_MAP.get(ext, ext or "text")
 
         out = f"### 📄 Code Slice: `{node.label}` ({node.type})\n"
-        out += f"- **Archivo:** `{node.path}` (L{actual_start}-L{actual_end} de {total_file_lines})\n"
+        out += f"- **Rama:** `{effective_branch}` | **Archivo:** `{node.path}` (L{actual_start}-L{actual_end} de {total_file_lines})\n"
         if meta.get("signature"):
             out += f"- **Firma:** `{meta.get('signature')}`\n"
         out += f"\n```{lang}\n{slice_content.rstrip()}\n```\n"

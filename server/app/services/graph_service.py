@@ -6,16 +6,17 @@ from app.services.project_service import ProjectService
 
 class GraphService:
     @staticmethod
-    def get_graph(project_id: str) -> Optional[GraphData]:
-        """Carga el grafo completo para un proyecto si está configurado."""
+    def get_graph(project_id: str, branch: Optional[str] = None) -> Optional[GraphData]:
+        """Carga el grafo completo para un proyecto y rama si está configurado."""
         if not ProjectService.is_configured(project_id):
             return None
-        return GraphStorage.load_graph(project_id)
+        effective_branch = branch or ProjectService.get_active_branch(project_id)
+        return GraphStorage.load_graph(project_id, branch=effective_branch)
 
     @classmethod
-    def query_nodes(cls, project_id: str, query: str = "", node_type: str = "", limit: int = 50) -> List[Dict[str, Any]]:
-        """Busca nodos por nombre/texto y tipo opcional."""
-        graph = cls.get_graph(project_id)
+    def query_nodes(cls, project_id: str, query: str = "", node_type: str = "", limit: int = 50, branch: Optional[str] = None) -> List[Dict[str, Any]]:
+        """Busca nodos por nombre/texto y tipo opcional en la rama indicada."""
+        graph = cls.get_graph(project_id, branch=branch)
         if not graph:
             return []
 
@@ -34,9 +35,9 @@ class GraphService:
         return results
 
     @classmethod
-    def get_node_connections(cls, project_id: str, node_id: str) -> Optional[Dict[str, Any]]:
-        """Obtiene el nodo y todas sus conexiones entrantes y salientes."""
-        graph = cls.get_graph(project_id)
+    def get_node_connections(cls, project_id: str, node_id: str, branch: Optional[str] = None) -> Optional[Dict[str, Any]]:
+        """Obtiene el nodo y todas sus conexiones entrantes y salientes en la rama indicada."""
+        graph = cls.get_graph(project_id, branch=branch)
         if not graph:
             return None
 
@@ -54,9 +55,9 @@ class GraphService:
         }
 
     @classmethod
-    def update_node_context(cls, project_id: str, node_id: str, description: str) -> Tuple[bool, str]:
+    def update_node_context(cls, project_id: str, node_id: str, description: str, branch: Optional[str] = None) -> Tuple[bool, str]:
         """Permite enriquecer notas o contexto arquitectónico en un nodo con persistencia (is_custom=True)."""
-        graph = cls.get_graph(project_id)
+        graph = cls.get_graph(project_id, branch=branch)
         if not graph:
             return False, f"Project '{project_id}' not found or not configured."
 
@@ -67,13 +68,14 @@ class GraphService:
         target.description = description
         target.is_custom = True
         target.origin = "ai"
-        GraphStorage.save_graph(graph)
-        return True, f"Successfully updated node '{node_id}' in project '{project_id}'."
+        effective_branch = branch or graph.metadata.get("branch")
+        GraphStorage.save_graph(graph, branch=effective_branch)
+        return True, f"Successfully updated node '{node_id}' in project '{project_id}' (branch: {effective_branch})."
 
     @classmethod
-    def add_custom_connection(cls, project_id: str, source: str, target: str, relation: str = "relates_to") -> Tuple[bool, str]:
-        """Crea una relación personalizada persistente entre dos nodos existentes."""
-        graph = cls.get_graph(project_id)
+    def add_custom_connection(cls, project_id: str, source: str, target: str, relation: str = "relates_to", branch: Optional[str] = None) -> Tuple[bool, str]:
+        """Crea una relación personalizada persistente entre dos nodos existentes en la rama indicada."""
+        graph = cls.get_graph(project_id, branch=branch)
         if not graph:
             return False, f"Project '{project_id}' not found or not configured."
 
@@ -87,13 +89,14 @@ class GraphService:
 
         edge = Edge(source=source, target=target, relation=relation, origin="ai", is_custom=True)
         graph.edges.append(edge)
-        GraphStorage.save_graph(graph)
+        effective_branch = branch or graph.metadata.get("branch")
+        GraphStorage.save_graph(graph, branch=effective_branch)
         return True, f"Successfully created persistent connection: {source} -[{relation}]-> {target}"
 
     @classmethod
-    def calculate_impact(cls, project_id: str, node_id: str, max_depth: int = 2, output_format: str = "markdown") -> str:
+    def calculate_impact(cls, project_id: str, node_id: str, max_depth: int = 2, output_format: str = "markdown", branch: Optional[str] = None) -> str:
         """Calcula el radio de impacto transitivo (Blast Radius) clasificando por riesgo."""
-        graph = cls.get_graph(project_id)
+        graph = cls.get_graph(project_id, branch=branch)
         if not graph:
             return f"Project '{project_id}' not found or not configured."
 
@@ -196,9 +199,9 @@ class GraphService:
         return md
 
     @classmethod
-    def extract_subgraph(cls, project_id: str, focal_node_id: str, depth: int = 1, output_format: str = "markdown") -> str:
+    def extract_subgraph(cls, project_id: str, focal_node_id: str, depth: int = 1, output_format: str = "markdown", branch: Optional[str] = None) -> str:
         """Extrae un subgrafo focalizado de N-saltos alrededor de un nodo focal."""
-        graph = cls.get_graph(project_id)
+        graph = cls.get_graph(project_id, branch=branch)
         if not graph:
             return f"Project '{project_id}' not found or not configured."
 

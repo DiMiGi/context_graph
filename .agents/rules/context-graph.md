@@ -39,10 +39,10 @@ Antes de abrir archivos completos de código:
 
 ---
 
-## 🔄 3. Sincronización Obligatoria Post-Edición
+## 🔄 3. Sincronización y Git Multi-Rama
 > [!IMPORTANT]
-> **Reindexación Inmediata de Archivos Modificados:**
-> Cada vez que crees, edites o elimines archivos en el workspace, **DEBES** sincronizar el grafo invocando inmediatamente:
-> `reindex_modified_files(project_id, file_paths=[...])`
-> Esto mantiene el grafo actualizado en tiempo real sin perder notas ni conexiones enriquecidas por IA (`is_custom=True`).
+> - **Sincronización Git Incremental:** Usa `sync_project_graph(project_id, branch=None)` si cambiaste de commit o de rama en Git para actualizar el grafo automáticamente con el diff de commits.
+> - **Reindexación Inmediata de Archivos Modificados:** Cada vez que crees, edites o elimines archivos en el workspace, sincroniza el grafo invocando inmediatamente `reindex_modified_files(project_id, file_paths=[...], branch=None)`.
+> - **Soporte Multi-Rama:** Todas las herramientas aceptan `branch` opcional. Si se omite, se usa la rama activa de Git en el workspace.
+> - **Política de Seguridad:** El MCP solo realiza operaciones incrementales seguras; la reconstrucción destructiva (`rebuild`) solo puede ejecutarse desde la Web UI.
 

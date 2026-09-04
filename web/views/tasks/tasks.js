@@ -26,6 +26,7 @@ export async function fetchTasks(onTaskCompleted) {
     html += '<thead><tr style="border-bottom:1px solid var(--border-color); text-align:left;">';
     html += '<th style="padding:10px;">ID Tarea</th>';
     html += '<th style="padding:10px;">Proyecto</th>';
+    html += '<th style="padding:10px;">Rama</th>';
     html += '<th style="padding:10px;">Modo</th>';
     html += '<th style="padding:10px;">Estado</th>';
     html += '<th style="padding:10px;">Resultado</th>';
@@ -42,10 +43,13 @@ export async function fetchTasks(onTaskCompleted) {
         resultText = `⏳ Procesando en segundo plano...`;
       }
 
+      const branchLabel = t.branch || t.result?.branch || 'main';
+
       html += `
         <tr style="border-bottom:1px solid var(--bg-panel);">
           <td style="padding:10px; font-family:var(--font-mono); color:var(--text-muted);">${t.id.slice(0, 8)}...</td>
           <td style="padding:10px; font-weight:600;">${t.project_id}</td>
+          <td style="padding:10px; font-family:var(--font-mono); color:var(--accent-primary);">🌿 ${branchLabel}</td>
           <td style="padding:10px; font-family:var(--font-mono);">${t.mode}</td>
           <td style="padding:10px;"><span class="${pillClass}">${t.status}</span></td>
           <td style="padding:10px; color:var(--text-muted);">${resultText}</td>
@@ -80,14 +84,14 @@ export function stopTasksPolling() {
   if (pollingInterval) clearInterval(pollingInterval);
 }
 
-export async function enqueueReindexTask(projectId, mode, targetPaths = null) {
+export async function enqueueReindexTask(projectId, mode, targetPaths = null, branch = null) {
   const res = await fetch(`/api/tasks/projects/${projectId}/reindex`, {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
       'X-Requested-By': 'web_ui'
     },
-    body: JSON.stringify({ mode, target_paths: targetPaths })
+    body: JSON.stringify({ mode, target_paths: targetPaths, branch })
   });
   return await res.json();
 }

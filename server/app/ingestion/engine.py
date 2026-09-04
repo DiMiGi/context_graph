@@ -5,6 +5,7 @@ from app.ingestion.walker import DirectoryWalker
 from app.ingestion.parsers import get_parser
 from app.graph.model import GraphData, Node, Edge
 from app.graph.storage import GraphStorage
+from app.services.git_service import GitService
 
 class IngestionEngine:
     @classmethod
@@ -13,14 +14,30 @@ class IngestionEngine:
         project_id: str,
         source_directory: str,
         project_name: str = None,
-        mode: str = "incremental",  # "incremental", "rebuild", "partial"
-        target_paths: Optional[List[str]] = None
+        mode: str = "incremental",  # "incremental", "rebuild", "partial", "git_diff"
+        target_paths: Optional[List[str]] = None,
+        branch: Optional[str] = None
     ) -> GraphData:
         if not os.path.exists(source_directory):
             raise ValueError(f"Directory {source_directory} does not exist")
 
-        existing_graph = GraphStorage.load_graph(project_id)
+        # 0. Detección de Git Info
+        git_info = GitService.get_git_info(source_directory)
+        effective_branch = branch or git_info.get("branch") or "main"
+        current_commit = git_info.get("commit_hash", "")
+
+        existing_graph = GraphStorage.load_graph(project_id, branch=effective_branch)
         
+        # Detección inteligente de nuevo commit: si el commit cambió y no se forzó rebuild,
+        # usar git diff para reindexar solo los archivos modificados.
+        if existing_graph and mode in ("incremental", "git_diff") and current_commit:
+            old_commit = existing_graph.metadata.get("commit_hash")
+            if old_commit and old_commit != current_commit:
+                diff_files = GitService.get_diff_files(source_directory, old_commit, current_commit)
+                if diff_files:
+                    mode = "partial"
+                    target_paths = diff_files
+
         # 1. Preparar nodos y aristas existentes según el modo
         nodes_dict: Dict[str, Node] = {}
         edges_list: List[Edge] = []
@@ -175,6 +192,13 @@ class IngestionEngine:
             edges=edges_list,
             metadata={
                 "source_directory": source_directory,
+                "branch": effective_branch,
+                "commit_hash": current_commit,
+                "commit_short": git_info.get("short_hash", current_commit[:8] if current_commit else ""),
+                "commit_message": git_info.get("commit_message", ""),
+                "commit_date": git_info.get("commit_date", ""),
+                "is_dirty": git_info.get("is_dirty", False),
+                "is_git_repo": git_info.get("is_git_repo", False),
                 "total_files": total_files,
                 "new_files_parsed": new_files_parsed,
                 "file_types": file_types_count,
@@ -185,18 +209,25 @@ class IngestionEngine:
             }
         )
 
-        GraphStorage.save_graph(graph)
+        GraphStorage.save_graph(graph, branch=effective_branch)
 
         # 5. Generate Report
         report_md = cls._generate_report(graph, god_nodes, file_types_count, unregistered_files, mode, new_files_parsed)
-        GraphStorage.save_report(project_id, report_md)
+        GraphStorage.save_report(project_id, report_md, branch=effective_branch)
 
         return graph
 
     @classmethod
     def _generate_report(cls, graph: GraphData, god_nodes: list, file_types: dict, unregistered_files: dict = None, mode: str = "incremental", new_files_count: int = 0) -> str:
+        branch = graph.metadata.get("branch", "main")
+        commit_short = graph.metadata.get("commit_short", "")
+        commit_msg = graph.metadata.get("commit_message", "")
+        
         report = f"# 🌐 Reporte de Grafo de Conocimiento: {graph.name}\n\n"
         report += f"- **ID Proyecto:** `{graph.project_id}`\n"
+        report += f"- **Rama Git:** `{branch}`\n"
+        if commit_short:
+            report += f"- **Último Commit:** `{commit_short}` {f'(*{commit_msg}*)' if commit_msg else ''}\n"
         report += f"- **Directorio Origen:** `{graph.metadata.get('source_directory', 'N/A')}`\n"
         report += f"- **Total Nodos en Base:** `{len(graph.nodes)}`\n"
         report += f"- **Total Conexiones:** `{len(graph.edges)}`\n"

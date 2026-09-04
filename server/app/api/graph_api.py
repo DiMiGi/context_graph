@@ -1,4 +1,4 @@
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, Query
 from typing import Optional, Dict, Any
 from pydantic import BaseModel
 from app.services.project_service import ProjectService
@@ -20,6 +20,7 @@ class AddNodeRequest(BaseModel):
     description: Optional[str] = ""
     community: Optional[int] = 0
     origin: Optional[str] = "manual"
+    branch: Optional[str] = None
 
 class UpdateNodeRequest(BaseModel):
     label: Optional[str] = None
@@ -29,6 +30,7 @@ class UpdateNodeRequest(BaseModel):
     community: Optional[int] = None
     origin: Optional[str] = None
     metadata: Optional[Dict[str, Any]] = None
+    branch: Optional[str] = None
 
 class AddEdgeRequest(BaseModel):
     source: str
@@ -36,10 +38,11 @@ class AddEdgeRequest(BaseModel):
     relation: str = "relates_to"
     weight: Optional[float] = 1.0
     origin: Optional[str] = "manual"
+    branch: Optional[str] = None
 
 import networkx as nx
 
-def ensure_graph_layout(graph: GraphData, project_id: str):
+def ensure_graph_layout(graph: GraphData, project_id: str, branch: Optional[str] = None):
     if not graph or not graph.nodes:
         return
     if any(n.x is None or n.y is None for n in graph.nodes):
@@ -66,9 +69,10 @@ def ensure_graph_layout(graph: GraphData, project_id: str):
                     n.x = round(float(coords[0]) * 1500.0, 2)
                     n.y = round(float(coords[1]) * 1500.0, 2)
 
-            GraphStorage.save_graph(graph)
+            effective_branch = branch or graph.metadata.get("branch")
+            GraphStorage.save_graph(graph, branch=effective_branch)
         except Exception as e:
-            print(f"Error computing layout for {project_id}: {e}. Usando fallback radial...")
+            print(f"Error computing layout for {project_id} ({branch}): {e}. Usando fallback radial...")
             import math
             for idx, n in enumerate(graph.nodes):
                 comm = n.community or 0
@@ -78,24 +82,25 @@ def ensure_graph_layout(graph: GraphData, project_id: str):
                 cy = (comm // 5 - 2) * 500.0
                 n.x = round(cx + r * math.cos(angle), 2)
                 n.y = round(cy + r * math.sin(angle), 2)
-            GraphStorage.save_graph(graph)
+            effective_branch = branch or graph.metadata.get("branch")
+            GraphStorage.save_graph(graph, branch=effective_branch)
 
 @router.get("", response_model=GraphData)
-def get_graph(project_id: str):
+def get_graph(project_id: str, branch: Optional[str] = Query(None)):
     check_project_configured(project_id)
-    graph = GraphService.get_graph(project_id)
+    graph = GraphService.get_graph(project_id, branch=branch)
     if not graph:
         raise HTTPException(status_code=404, detail="Graph not found")
-    ensure_graph_layout(graph, project_id)
+    ensure_graph_layout(graph, project_id, branch=branch)
     return graph
 
 @router.get("/geometry")
-def get_graph_geometry(project_id: str):
+def get_graph_geometry(project_id: str, branch: Optional[str] = Query(None)):
     check_project_configured(project_id)
-    graph = GraphService.get_graph(project_id)
+    graph = GraphService.get_graph(project_id, branch=branch)
     if not graph:
         raise HTTPException(status_code=404, detail="Graph not found")
-    ensure_graph_layout(graph, project_id)
+    ensure_graph_layout(graph, project_id, branch=branch)
 
     compact_nodes = [
         {
@@ -122,6 +127,9 @@ def get_graph_geometry(project_id: str):
     return {
         "project_id": graph.project_id,
         "name": graph.name,
+        "branch": graph.metadata.get("branch", branch or "main"),
+        "commit_hash": graph.metadata.get("commit_hash", ""),
+        "commit_short": graph.metadata.get("commit_short", ""),
         "nodes": compact_nodes,
         "edges": compact_edges,
         "metadata": {
@@ -134,9 +142,9 @@ def get_graph_geometry(project_id: str):
     }
 
 @router.get("/nodes/{node_id:path}", response_model=Node)
-def get_node(project_id: str, node_id: str):
+def get_node(project_id: str, node_id: str, branch: Optional[str] = Query(None)):
     check_project_configured(project_id)
-    graph = GraphStorage.load_graph(project_id)
+    graph = GraphService.get_graph(project_id, branch=branch)
     if not graph:
         raise HTTPException(status_code=404, detail="Graph not found")
     for n in graph.nodes:
@@ -145,15 +153,15 @@ def get_node(project_id: str, node_id: str):
     raise HTTPException(status_code=404, detail="Node not found")
 
 @router.get("/report")
-def get_report(project_id: str):
+def get_report(project_id: str, branch: Optional[str] = Query(None)):
     check_project_configured(project_id)
-    report = ProjectService.get_summary(project_id)
+    report = ProjectService.get_summary(project_id, branch=branch)
     return {"report": report}
 
 @router.post("/nodes", response_model=Node)
 def add_node(project_id: str, req: AddNodeRequest):
     check_project_configured(project_id)
-    graph = GraphStorage.load_graph(project_id)
+    graph = GraphService.get_graph(project_id, branch=req.branch)
     if not graph:
         raise HTTPException(status_code=404, detail="Graph not found")
 
@@ -161,19 +169,20 @@ def add_node(project_id: str, req: AddNodeRequest):
         if n.id == req.id:
             raise HTTPException(status_code=400, detail="Node already exists")
 
-    node_dict = req.model_dump()
+    node_dict = req.model_dump(exclude={"branch"})
     node_dict["is_custom"] = True
     node_dict["origin"] = req.origin or "manual"
 
     node = Node(**node_dict)
     graph.nodes.append(node)
-    GraphStorage.save_graph(graph)
+    effective_branch = req.branch or graph.metadata.get("branch")
+    GraphStorage.save_graph(graph, branch=effective_branch)
     return node
 
 @router.put("/nodes/{node_id:path}", response_model=Node)
 def update_node(project_id: str, node_id: str, req: UpdateNodeRequest):
     check_project_configured(project_id)
-    graph = GraphStorage.load_graph(project_id)
+    graph = GraphService.get_graph(project_id, branch=req.branch)
     if not graph:
         raise HTTPException(status_code=404, detail="Graph not found")
 
@@ -186,35 +195,36 @@ def update_node(project_id: str, node_id: str, req: UpdateNodeRequest):
     if not target_node:
         raise HTTPException(status_code=404, detail="Node not found")
 
-    update_data = req.model_dump(exclude_unset=True)
+    update_data = req.model_dump(exclude_unset=True, exclude={"branch"})
     for key, value in update_data.items():
         setattr(target_node, key, value)
 
-    # Marcar como editado manualmente / por IA
     target_node.is_custom = True
     if not req.origin:
         target_node.origin = "manual"
 
-    GraphStorage.save_graph(graph)
+    effective_branch = req.branch or graph.metadata.get("branch")
+    GraphStorage.save_graph(graph, branch=effective_branch)
     return target_node
 
 @router.delete("/nodes/{node_id:path}")
-def delete_node(project_id: str, node_id: str):
+def delete_node(project_id: str, node_id: str, branch: Optional[str] = Query(None)):
     check_project_configured(project_id)
-    graph = GraphStorage.load_graph(project_id)
+    graph = GraphService.get_graph(project_id, branch=branch)
     if not graph:
         raise HTTPException(status_code=404, detail="Graph not found")
 
     graph.nodes = [n for n in graph.nodes if n.id != node_id]
     graph.edges = [e for e in graph.edges if e.source != node_id and e.target != node_id]
 
-    GraphStorage.save_graph(graph)
+    effective_branch = branch or graph.metadata.get("branch")
+    GraphStorage.save_graph(graph, branch=effective_branch)
     return {"message": f"Node {node_id} and related edges deleted"}
 
 @router.post("/edges", response_model=Edge)
 def add_edge(project_id: str, req: AddEdgeRequest):
     check_project_configured(project_id)
-    graph = GraphStorage.load_graph(project_id)
+    graph = GraphService.get_graph(project_id, branch=req.branch)
     if not graph:
         raise HTTPException(status_code=404, detail="Graph not found")
 
@@ -222,19 +232,20 @@ def add_edge(project_id: str, req: AddEdgeRequest):
     if req.source not in node_ids or req.target not in node_ids:
         raise HTTPException(status_code=400, detail="Both source and target nodes must exist")
 
-    edge_dict = req.model_dump()
+    edge_dict = req.model_dump(exclude={"branch"})
     edge_dict["is_custom"] = True
     edge_dict["origin"] = req.origin or "manual"
 
     edge = Edge(**edge_dict)
     graph.edges.append(edge)
-    GraphStorage.save_graph(graph)
+    effective_branch = req.branch or graph.metadata.get("branch")
+    GraphStorage.save_graph(graph, branch=effective_branch)
     return edge
 
 @router.delete("/edges")
-def delete_edge(project_id: str, source: str, target: str, relation: Optional[str] = None):
+def delete_edge(project_id: str, source: str, target: str, relation: Optional[str] = None, branch: Optional[str] = Query(None)):
     check_project_configured(project_id)
-    graph = GraphStorage.load_graph(project_id)
+    graph = GraphService.get_graph(project_id, branch=branch)
     if not graph:
         raise HTTPException(status_code=404, detail="Graph not found")
 
@@ -243,5 +254,6 @@ def delete_edge(project_id: str, source: str, target: str, relation: Optional[st
     else:
         graph.edges = [e for e in graph.edges if not (e.source == source and e.target == target)]
 
-    GraphStorage.save_graph(graph)
+    effective_branch = branch or graph.metadata.get("branch")
+    GraphStorage.save_graph(graph, branch=effective_branch)
     return {"message": "Edge deleted"}

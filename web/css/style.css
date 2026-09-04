@@ -106,6 +106,29 @@ header {
   white-space: nowrap;
 }
 
+.branch-selector-wrapper {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  background: var(--bg-panel);
+  border: 1px solid var(--border-color);
+  border-radius: 6px;
+  padding: 0 6px;
+}
+
+.branch-selector-wrapper .branch-icon {
+  font-size: 13px;
+  opacity: 0.8;
+}
+
+.branch-selector-wrapper select {
+  border: none;
+  background: transparent;
+  padding: 6px 4px;
+  font-weight: 500;
+  color: var(--accent-primary);
+}
+
 select, input, textarea, button {
   font-family: inherit;
   font-size: 13px;

@@ -1,4 +1,4 @@
-// Orquestador Principal de la Aplicación Web con Enrutamiento SPA y Carga Diferida
+// Orquestador Principal de la Aplicación Web con Enrutamiento SPA, Multi-Rama y Carga Diferida
 import { initCanvas, isCanvasInitialized, pauseCanvas, resumeCanvas, setGraphData, filterGraph, resizeCanvas } from '/views/canvas/canvas.js?t=1788380000';
 import { renderSummary } from '/views/summary/summary.js';
 import { loadReport } from '/views/report/report.js';
@@ -25,6 +25,7 @@ const ROUTE_TO_VIEW = {
 
 let currentViewId = 'view-canvas';
 let currentProjectId = "";
+let currentBranch = "";
 let rawGraphData = null;
 let projectsList = [];
 
@@ -32,14 +33,15 @@ let projectsList = [];
 function parseUrlRoute() {
   const path = window.location.pathname.replace(/^\/+|\/+$/g, '');
   if (!path) {
-    return { viewId: 'view-canvas', projectId: null };
+    return { viewId: 'view-canvas', projectId: null, branch: null };
   }
   const parts = path.split('/');
   const route = parts[0]?.toLowerCase();
-  const projParam = parts.slice(1).join('/');
+  const projParam = parts[1] ? decodeURIComponent(parts[1]) : null;
+  const branchParam = parts[2] ? decodeURIComponent(parts[2]) : null;
 
   const viewId = ROUTE_TO_VIEW[route] || 'view-canvas';
-  return { viewId, projectId: projParam ? decodeURIComponent(projParam) : null };
+  return { viewId, projectId: projParam, branch: branchParam };
 }
 
 // 2. Resolver project_id por coincidencia exacta, nombre o sufijo
@@ -55,7 +57,7 @@ function resolveProjectId(param) {
   match = projectsList.find(p => (p.name || '').toLowerCase() === clean);
   if (match) return match.id;
 
-  // Coincidencia por sufijo (ej: "discord_api" -> "space_engineers_discord_api")
+  // Coincidencia por sufijo
   match = projectsList.find(p => (p.id || '').toLowerCase().endsWith(clean));
   if (match) return match.id;
 
@@ -69,13 +71,19 @@ function resolveProjectId(param) {
 // 3. Actualizar la barra de direcciones del navegador
 function updateBrowserUrl(replace = false) {
   const routeSegment = VIEW_ROUTES[currentViewId] || 'graphs';
-  const newPath = currentProjectId ? `/${routeSegment}/${encodeURIComponent(currentProjectId)}` : `/${routeSegment}`;
+  let newPath = `/${routeSegment}`;
+  if (currentProjectId) {
+    newPath += `/${encodeURIComponent(currentProjectId)}`;
+    if (currentBranch) {
+      newPath += `/${encodeURIComponent(currentBranch)}`;
+    }
+  }
   
   if (window.location.pathname !== newPath) {
     if (replace) {
-      history.replaceState({ viewId: currentViewId, projectId: currentProjectId }, '', newPath);
+      history.replaceState({ viewId: currentViewId, projectId: currentProjectId, branch: currentBranch }, '', newPath);
     } else {
-      history.pushState({ viewId: currentViewId, projectId: currentProjectId }, '', newPath);
+      history.pushState({ viewId: currentViewId, projectId: currentProjectId, branch: currentBranch }, '', newPath);
     }
   }
 }
@@ -104,19 +112,18 @@ export function switchView(viewId, updateUrl = true) {
   if (viewId === 'view-canvas') {
     if (!isCanvasInitialized()) {
       initCanvas('graph-canvas-element', null, (deletedId) => {
-        loadProjectData(currentProjectId);
+        loadProjectData(currentProjectId, currentBranch);
       });
     } else {
       resumeCanvas();
     }
     setTimeout(() => resizeCanvas(), 50);
   } else {
-    // Si no estamos en la vista de grafo, pausamos la física para ahorrar CPU/GPU
     pauseCanvas();
     if (viewId === 'view-tasks') {
       fetchTasks();
     } else if (viewId === 'view-report' && currentProjectId) {
-      loadReport(currentProjectId);
+      loadReport(currentProjectId, currentBranch);
     }
   }
 
@@ -125,24 +132,97 @@ export function switchView(viewId, updateUrl = true) {
   }
 }
 
-// 5. Cargar Datos del Proyecto Activo
-async function loadProjectData(projectId) {
-  currentProjectId = projectId;
-  const select = document.getElementById('project-select');
-  if (select && select.value !== projectId) {
-    select.value = projectId;
+// 5. Cargar Ramas Disponibles para el Proyecto
+async function loadBranchesForProject(projectId, preferredBranch = null) {
+  const branchSelect = document.getElementById('branch-select');
+  if (!branchSelect || !projectId) return "main";
+
+  try {
+    const res = await fetch(`/api/projects/${projectId}/branches`);
+    if (!res.ok) throw new Error('Error al consultar ramas');
+    const data = await res.json();
+    
+    branchSelect.innerHTML = '';
+    const activeBranch = data.active_branch || "main";
+    const branches = data.branches || [];
+
+    // Si no hay ramas indexadas aún, agregar al menos la rama activa de git
+    if (branches.length === 0) {
+      const opt = document.createElement('option');
+      opt.value = activeBranch;
+      opt.textContent = `${activeBranch} (activa)`;
+      branchSelect.appendChild(opt);
+      currentBranch = activeBranch;
+      return currentBranch;
+    }
+
+    branches.forEach(b => {
+      const opt = document.createElement('option');
+      opt.value = b.branch;
+      const isActive = b.is_active || b.branch === activeBranch;
+      const shortHash = b.short_hash ? ` [${b.short_hash}]` : '';
+      let statusLabel = '';
+      if (isActive && b.is_indexed) {
+        statusLabel = ` 🟢 (activa - ${b.nodes_count} nodos)`;
+      } else if (isActive && !b.is_indexed) {
+        statusLabel = ` 🟢 (activa - sin indexar)`;
+      } else if (b.is_indexed) {
+        statusLabel = ` 🌿 (${b.nodes_count} nodos)`;
+      } else {
+        statusLabel = ` ⚪ (sin indexar)`;
+      }
+      opt.textContent = `${b.branch}${shortHash}${statusLabel}`;
+      branchSelect.appendChild(opt);
+    });
+
+    // Determinar rama seleccionada
+    let targetBranch = preferredBranch;
+    if (!targetBranch || !branches.some(b => b.branch === targetBranch)) {
+      targetBranch = activeBranch || (branches[0]?.branch) || "main";
+    }
+
+    branchSelect.value = targetBranch;
+    currentBranch = targetBranch;
+    return currentBranch;
+
+  } catch (err) {
+    console.error("Error cargando ramas:", err);
+    currentBranch = preferredBranch || "main";
+    return currentBranch;
   }
-  updateBrowserUrl(true);
+}
+
+// 6. Cargar Datos del Proyecto Activo y Rama
+async function loadProjectData(projectId, branch = null) {
+  currentProjectId = projectId;
+  const projectSelect = document.getElementById('project-select');
+  if (projectSelect && projectSelect.value !== projectId) {
+    projectSelect.value = projectId;
+  }
 
   if (!projectId) return;
 
+  // Si no se pasó rama explícita o necesitamos refrescar el selector de ramas
+  if (!branch) {
+    branch = await loadBranchesForProject(projectId, currentBranch);
+  }
+  currentBranch = branch;
+
+  const branchSelect = document.getElementById('branch-select');
+  if (branchSelect && branchSelect.value !== currentBranch) {
+    branchSelect.value = currentBranch;
+  }
+
+  updateBrowserUrl(true);
+
   try {
-    const res = await fetch(`/api/projects/${projectId}/graph/geometry`);
+    const branchParam = currentBranch ? `?branch=${encodeURIComponent(currentBranch)}` : '';
+    const res = await fetch(`/api/projects/${projectId}/graph/geometry${branchParam}`);
     if (!res.ok) {
       // Fallback a endpoint de grafo completo
-      const fallbackRes = await fetch(`/api/projects/${projectId}/graph`);
+      const fallbackRes = await fetch(`/api/projects/${projectId}/graph${branchParam}`);
       if (!fallbackRes.ok) {
-        rawGraphData = { nodes: [], edges: [], metadata: {} };
+        rawGraphData = { nodes: [], edges: [], metadata: { branch: currentBranch } };
         setGraphData(projectId, [], []);
         renderSummary(rawGraphData);
         renderUnregistered({});
@@ -159,7 +239,7 @@ async function loadProjectData(projectId) {
     // Si el usuario ya está viendo el canvas, inicializarlo si aún no lo estaba
     if (currentViewId === 'view-canvas' && !isCanvasInitialized()) {
       initCanvas('graph-canvas-element', null, (deletedId) => {
-        loadProjectData(currentProjectId);
+        loadProjectData(currentProjectId, currentBranch);
       });
     }
 
@@ -171,15 +251,15 @@ async function loadProjectData(projectId) {
       }
     });
     renderUnregistered(rawGraphData.metadata?.unregistered_files);
-    loadReport(projectId);
+    loadReport(projectId, currentBranch);
 
   } catch (err) {
     console.error("Error al cargar datos del proyecto:", err);
   }
 }
 
-// 6. Cargar Lista de Proyectos y Resolver Ruta Inicial
-async function loadProjects(preferredProjectId = null) {
+// 7. Cargar Lista de Proyectos y Resolver Ruta Inicial
+async function loadProjects(preferredProjectId = null, preferredBranch = null) {
   try {
     const res = await fetch('/api/projects');
     projectsList = await res.json();
@@ -190,7 +270,8 @@ async function loadProjects(preferredProjectId = null) {
       const opt = document.createElement('option');
       opt.value = p.id;
       const countLabel = p.nodes_count > 0 ? `(${p.nodes_count} nodos)` : `(Sin indexar)`;
-      opt.textContent = `${p.name} ${countLabel}`;
+      const branchBadge = p.git_branch ? `[🌿 ${p.git_branch}]` : '';
+      opt.textContent = `${p.name} ${branchBadge} ${countLabel}`;
       select.appendChild(opt);
     });
 
@@ -201,29 +282,30 @@ async function loadProjects(preferredProjectId = null) {
 
     if (targetProj) {
       select.value = targetProj;
-      await loadProjectData(targetProj);
+      await loadBranchesForProject(targetProj, preferredBranch);
+      await loadProjectData(targetProj, currentBranch);
     }
   } catch (err) {
     console.error('Error cargando proyectos:', err);
   }
 }
 
-// 7. Inicialización Principal
+// 8. Inicialización Principal
 document.addEventListener('DOMContentLoaded', async () => {
-  // 1. Obtener vista y proyecto desde la URL
+  // 1. Obtener vista, proyecto y rama desde la URL
   const initialRoute = parseUrlRoute();
 
-  // 2. Cambiar a la vista solicitada (si no es canvas, el canvas NO se inicializa)
+  // 2. Cambiar a la vista solicitada
   switchView(initialRoute.viewId, false);
 
-  // 3. Cargar proyectos y datos del proyecto indicado en la URL
-  await loadProjects(initialRoute.projectId);
+  // 3. Cargar proyectos y datos del proyecto/rama indicado en la URL
+  await loadProjects(initialRoute.projectId, initialRoute.branch);
 
   // 4. Polling de tareas asíncronas
-  startTasksPolling((completedProjectId) => {
-    loadProjects(currentProjectId);
+  startTasksPolling((completedProjectId, completedTask) => {
+    loadProjects(currentProjectId, currentBranch);
     if (completedProjectId === currentProjectId) {
-      loadProjectData(currentProjectId);
+      loadProjectData(currentProjectId, currentBranch);
     }
   });
 
@@ -233,24 +315,34 @@ document.addEventListener('DOMContentLoaded', async () => {
   });
 
   // 6. Cambio de proyecto en el desplegable
-  document.getElementById('project-select')?.addEventListener('change', (e) => {
-    loadProjectData(e.target.value);
+  document.getElementById('project-select')?.addEventListener('change', async (e) => {
+    const newProj = e.target.value;
+    if (newProj) {
+      await loadBranchesForProject(newProj);
+      await loadProjectData(newProj, currentBranch);
+    }
   });
 
-  // 7. Soporte para botones Atrás/Adelante del navegador (Popstate)
+  // 7. Cambio de rama en el desplegable
+  document.getElementById('branch-select')?.addEventListener('change', (e) => {
+    currentBranch = e.target.value;
+    loadProjectData(currentProjectId, currentBranch);
+  });
+
+  // 8. Soporte para botones Atrás/Adelante del navegador (Popstate)
   window.addEventListener('popstate', () => {
     const route = parseUrlRoute();
     const matchedProj = resolveProjectId(route.projectId);
     switchView(route.viewId, false);
-    if (matchedProj && matchedProj !== currentProjectId) {
-      loadProjectData(matchedProj);
+    if (matchedProj && (matchedProj !== currentProjectId || route.branch !== currentBranch)) {
+      loadProjectData(matchedProj, route.branch);
     }
   });
 
-  // 8. Botones de acciones asíncronas
+  // 9. Botones de acciones asíncronas
   document.getElementById('btn-reindex-inc')?.addEventListener('click', async () => {
     if (!currentProjectId) return alert('Selecciona un proyecto');
-    const res = await enqueueReindexTask(currentProjectId, 'incremental');
+    const res = await enqueueReindexTask(currentProjectId, 'incremental', null, currentBranch);
     alert(res.message || 'Tarea encolada');
     switchView('view-tasks');
   });
@@ -261,7 +353,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     if (!input) return;
     const paths = input.split(',').map(p => p.trim()).filter(p => p);
     if (paths.length > 0) {
-      const res = await enqueueReindexTask(currentProjectId, 'partial', paths);
+      const res = await enqueueReindexTask(currentProjectId, 'partial', paths, currentBranch);
       alert(res.message || 'Tarea encolada');
       switchView('view-tasks');
     }
@@ -269,13 +361,13 @@ document.addEventListener('DOMContentLoaded', async () => {
 
   document.getElementById('btn-rebuild-full')?.addEventListener('click', async () => {
     if (!currentProjectId) return alert('Selecciona un proyecto');
-    if (confirm('⚠️ ¿Estás seguro de reconstruir el grafo?\nLa tarea se ejecutará en segundo plano.')) {
-      const res = await enqueueReindexTask(currentProjectId, 'rebuild');
+    if (confirm(`⚠️ ¿Estás seguro de reconstruir el grafo para la rama '${currentBranch || 'activa'}'?\nLa tarea se ejecutará en segundo plano.`)) {
+      const res = await enqueueReindexTask(currentProjectId, 'rebuild', null, currentBranch);
       alert(res.message || 'Tarea encolada');
       switchView('view-tasks');
     }
   });
 
   document.getElementById('btn-refresh-tasks')?.addEventListener('click', () => fetchTasks());
-  document.getElementById('btn-refresh-report')?.addEventListener('click', () => loadReport(currentProjectId));
+  document.getElementById('btn-refresh-report')?.addEventListener('click', () => loadReport(currentProjectId, currentBranch));
 });

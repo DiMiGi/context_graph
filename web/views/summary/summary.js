@@ -8,6 +8,19 @@ export function renderSummary(graphData, onFilterChange) {
   const totalFiles = graphData.metadata?.total_files || 0;
   document.getElementById('summary-stat-files').textContent = totalFiles;
 
+  const branchElem = document.getElementById('summary-stat-branch');
+  const commitElem = document.getElementById('summary-stat-commit');
+  if (branchElem) {
+    const branch = graphData.metadata?.branch || graphData.branch || 'main';
+    const isDirty = graphData.metadata?.is_dirty ? ' ⚠️ (dirty)' : '';
+    branchElem.textContent = `🌿 ${branch}${isDirty}`;
+  }
+  if (commitElem) {
+    const shortHash = graphData.metadata?.commit_short || (graphData.metadata?.commit_hash ? graphData.metadata.commit_hash.slice(0, 8) : '');
+    const commitMsg = graphData.metadata?.commit_message ? ` - ${graphData.metadata.commit_message.slice(0, 30)}...` : '';
+    commitElem.textContent = shortHash ? `[${shortHash}]${commitMsg}` : 'Sin commit registrado';
+  }
+
   const fileTypes = graphData.metadata?.file_types || {};
   const breakdownContainer = document.getElementById('summary-breakdown-list');
   if (breakdownContainer) {

@@ -1,4 +1,4 @@
-from fastapi import APIRouter, HTTPException, Header
+from fastapi import APIRouter, HTTPException, Header, Query
 from typing import List, Dict, Any, Optional
 from pydantic import BaseModel
 import os
@@ -13,20 +13,38 @@ router = APIRouter(prefix="/api/projects", tags=["projects"])
 class CreateProjectRequest(BaseModel):
     project_id: str
     name: str
+    branch: Optional[str] = None
 
 class ReindexRequest(BaseModel):
-    mode: str = "incremental"  # "incremental", "partial", "rebuild"
+    mode: str = "incremental"  # "incremental", "partial", "rebuild", "git_diff"
     target_paths: Optional[List[str]] = None
+    branch: Optional[str] = None
 
 @router.get("", response_model=List[Dict[str, Any]])
 def list_projects():
     return ProjectService.list_projects()
 
+@router.get("/{project_id}/branches")
+def list_project_branches(project_id: str):
+    if not ProjectService.is_configured(project_id):
+        raise HTTPException(status_code=404, detail=f"Project '{project_id}' is not configured")
+    
+    branches = ProjectService.list_branches(project_id)
+    active_branch = ProjectService.get_active_branch(project_id)
+    git_info = ProjectService.get_git_info(project_id)
+    
+    return {
+        "project_id": project_id,
+        "active_branch": active_branch,
+        "git_info": git_info,
+        "branches": branches
+    }
+
 @router.post("", response_model=GraphData)
 def create_project(req: CreateProjectRequest):
     if not req.project_id.strip():
         raise HTTPException(status_code=400, detail="Project ID cannot be empty")
-    return GraphStorage.create_project(req.project_id, req.name)
+    return GraphStorage.create_project(req.project_id, req.name, branch=req.branch)
 
 @router.post("/{project_id}/reindex")
 def reindex_project(
@@ -48,6 +66,7 @@ def reindex_project(
 
     mode = req.mode if req else "incremental"
     target_paths = req.target_paths if req else None
+    branch = req.branch if req else None
 
     # Seguridad: El modo 'rebuild' completo SOLO se permite si la petición viene del navegador (UI)
     if mode == "rebuild" and x_requested_by != "web_ui":
@@ -73,11 +92,15 @@ def reindex_project(
             source_directory=source_path,
             project_name=proj_name,
             mode=mode,
-            target_paths=target_paths
+            target_paths=target_paths,
+            branch=branch
         )
         return {
             "status": "success",
             "project_id": graph.project_id,
+            "branch": graph.metadata.get("branch", branch or "main"),
+            "commit_hash": graph.metadata.get("commit_hash", ""),
+            "commit_short": graph.metadata.get("commit_short", ""),
             "mode": mode,
             "nodes_count": len(graph.nodes),
             "edges_count": len(graph.edges),
@@ -88,8 +111,8 @@ def reindex_project(
         raise HTTPException(status_code=500, detail=str(e))
 
 @router.delete("/{project_id}")
-def delete_project(project_id: str):
-    success = GraphStorage.delete_project(project_id)
+def delete_project(project_id: str, branch: Optional[str] = Query(None)):
+    success = GraphStorage.delete_project(project_id, branch=branch)
     if not success:
-        raise HTTPException(status_code=404, detail="Project not found")
-    return {"message": f"Project {project_id} deleted"}
+        raise HTTPException(status_code=404, detail="Project or branch not found")
+    return {"message": f"Project {project_id} (branch: {branch or 'all'}) deleted"}

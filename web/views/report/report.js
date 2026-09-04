@@ -1,11 +1,12 @@
 // Módulo de Reporte Markdown
-export async function loadReport(projectId) {
+export async function loadReport(projectId, branch = null) {
   const container = document.getElementById('report-content-body');
   if (!container || !projectId) return;
 
   try {
     container.innerHTML = '<p style="color:var(--text-muted);">Cargando reporte arquitectónico...</p>';
-    const res = await fetch(`/api/projects/${projectId}/graph/report`);
+    const branchParam = branch ? `?branch=${encodeURIComponent(branch)}` : '';
+    const res = await fetch(`/api/projects/${projectId}/graph/report${branchParam}`);
     const data = await res.json();
     if (window.marked && data.report) {
       container.innerHTML = marked.parse(data.report);

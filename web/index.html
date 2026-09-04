@@ -47,6 +47,12 @@
       <select id="project-select">
         <option value="">Seleccionar Proyecto...</option>
       </select>
+      <div class="branch-selector-wrapper">
+        <span class="branch-icon">🌿</span>
+        <select id="branch-select" title="Seleccionar Rama / Worktree">
+          <option value="">Rama...</option>
+        </select>
+      </div>
       <button id="btn-reindex-inc" class="primary" title="Encolar tarea de indexación incremental">➕ Indexar Nuevos</button>
       <button id="btn-reindex-partial" title="Encolar tarea para rutas específicas">🎯 Reindexar Rutas</button>
       <button id="btn-rebuild-full" class="danger" title="Encolar purga y reconstrucción total">⚠️ Reconstruir Todo</button>
@@ -133,6 +139,11 @@
               <div class="summary-card-label">Archivos Indexados</div>
               <div id="summary-stat-files" class="summary-card-value">0</div>
               <div id="summary-stat-types" class="summary-card-sub">Sin datos</div>
+            </div>
+            <div class="summary-card">
+              <div class="summary-card-label">Estado Git / Rama</div>
+              <div id="summary-stat-branch" class="summary-card-value" style="font-size: 18px; font-family: var(--font-mono); color: var(--accent-primary);">main</div>
+              <div id="summary-stat-commit" class="summary-card-sub" style="font-family: var(--font-mono);">Sin commit</div>
             </div>
           </div>
           <div class="summary-section">
